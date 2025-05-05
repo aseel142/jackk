@@ -21,6 +21,7 @@ public class Main extends Application {
     @Override
     public void start(Stage primaryStage) {
         this.primaryStage = primaryStage;
+        CardManager.preloadCardImages();
 
         // ---- 1) Main menu with "Phase 1" button ----
         Button phase1Btn = new Button("Phase 1");
