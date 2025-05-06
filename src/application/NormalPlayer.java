@@ -38,14 +38,7 @@ public class NormalPlayer {
         {70, 320}    // Card 4
     };
     
-    /**
-     * Creates a player with marbles and specified cards
-     * @param playerName The player name (player1, player2, etc.)
-     * @param card1 First card
-     * @param card2 Second card
-     * @param card3 Third card
-     * @param card4 Fourth card
-     */
+   
     public NormalPlayer(String playerName, Card card1, Card card2, Card card3, Card card4) {
         this.playerName = playerName;
         

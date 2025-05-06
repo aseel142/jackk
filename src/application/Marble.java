@@ -2,6 +2,11 @@ package application;
 
 import javafx.scene.paint.Color;
 import javafx.scene.shape.Circle;
+import javafx.animation.Timeline;
+import javafx.animation.KeyFrame;
+import javafx.animation.KeyValue;
+import javafx.animation.Interpolator;
+import javafx.util.Duration;
 
 public class Marble extends Circle {
     
