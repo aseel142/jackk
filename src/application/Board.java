@@ -11,9 +11,12 @@ import javafx.util.Duration;
 
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Random;
+import java.util.Set;
+import java.util.function.Predicate;
 
 /**
  * The Board class manages the game state and enforces the rules of Jackaroo
@@ -80,6 +83,8 @@ public class Board {
      * Initialize a new game
      */
     public void initializeGame() {
+        startingPlayerIndex = 0;
+        currentPlayerIndex  = 0;
         // Reset state
         marblePositions.clear();
         marblesInHome.clear();
@@ -304,37 +309,35 @@ public class Board {
     /**
      * Check if the given marble captures any other marbles at its position
      */
-    private void checkForCaptures(Marble justMoved, int newPosition) {
-        Player mover = findMarbleOwner(justMoved);
-        if (mover == null) return;
+    private void checkForCaptures(Marble captureMarble, int position) {
+        Player owner = findMarbleOwner(captureMarble);
+        if (owner == null) return;
 
-        // 1) Gather all enemy marbles sitting at the same spot
+        // collect to-capture so we don't mutate mid-loop
         List<Marble> toCapture = new ArrayList<>();
-        for (Map.Entry<Marble, Integer> entry : marblePositions.entrySet()) {
-            Marble other = entry.getKey();
-            int pos = entry.getValue();
+        for (Map.Entry<Marble,Integer> e : marblePositions.entrySet()) {
+            Marble m = e.getKey();
+            int     pos = e.getValue();
 
-            if (other == justMoved) continue;               // skip the one we just moved
-            if (marblesInHome.getOrDefault(other, false)) continue;  // skip ones still in home
+            if (m == captureMarble)                          continue; // skip itself
+            if (marblesInHome.getOrDefault(m, false))         continue; // skip home
+            Player targetOwner = findMarbleOwner(m);
+            if (targetOwner == owner)                        continue; // **skip same player**
+            if (targetOwner != null && isInSafeZone(targetOwner, pos)) continue; // skip safe-zone
 
-            Player owner = findMarbleOwner(other);
-            if (owner != null && isInSafeZone(owner, pos)) continue; // skip safely home marbles
-
-            if (pos == newPosition) {
-                toCapture.add(other);
+            if (pos == position) {
+                toCapture.add(m);
             }
         }
 
-        // 2) Now actually remove them and animate the “send home”
+        // now actually send them home
         for (Marble victim : toCapture) {
-            // mark it back in home
             marblesInHome.put(victim, true);
             marblePositions.remove(victim);
 
-            // animate back to its owner’s home slot
-            Player owner = findMarbleOwner(victim);
-            int idx = owner.getMarbleIndex(victim);
-            double[] home   = owner.getHomePosition(idx);
+            Player victOwner = findMarbleOwner(victim);
+            int idx = victOwner.getMarbleIndex(victim);
+            double[] home = victOwner.getHomePosition(idx);
             moveMarbleVisually(victim, home[0], home[1], 1.0, 0.0);
         }
     }
@@ -411,15 +414,16 @@ public class Board {
     public boolean isInSafeZone(Player player, int position) {
         if (player == player1) return position >= 46 && position <= 49;
         if (player == player2) return position >= 63 && position <= 66;
-        if (player == player3) return position >= 13 && position <= 16;
-        if (player == player4) return position >= 30 && position <= 33;
+        if (player == player3) return position >= 13 && position <= 16; 
+        if (player == player4) return position >= 30 && position <= 33;;
         return false;
     }
     
     /**
      * Check if a position is in another player's safe zone
+     * Changed to public so Player classes can access it
      */
-    private boolean isOtherPlayerSafeZone(Player player, int position) {
+    public boolean isOtherPlayerSafeZone(Player player, int position) {
         if (player == player1) {
             return (position >= 63 && position <= 66) || // Player 2's safe zone
                    (position >= 13 && position <= 16) || // Player 3's safe zone 
@@ -443,82 +447,81 @@ public class Board {
     /**
      * Calculates the target position after moving a specified number of steps
      */
+    /**
+     * Calculates the target position after moving a specified number of steps
+     */
     public int calculateTargetPosition(Player player, int currentPosition, int steps) {
-        // If already in safe zone, continue moving in safe zone until steps are exhausted
-        if (isInSafeZone(player, currentPosition)) {
-            int position = currentPosition;
-            for (int i = 0; i < steps; i++) {
-                position++;
-                // If reached end of safe zone, stop moving
+        // first, collect which safe-zone slots are already taken by this player
+        Set<Integer> occupied = new HashSet<>();
+        for (Marble m : player.getMarbles()) {
+            Integer pos = marblePositions.get(m);
+            if (pos != null && isInSafeZone(player, pos)) {
+                occupied.add(pos);
+            }
+        }
+
+        // helper to test whether a candidate slot is in this player's safe zone
+        Predicate<Integer> inOwnSafe = pos -> isInSafeZone(player, pos);
+
+        int position = currentPosition;
+        int remaining = steps;
+
+        // Get the base position for this player
+        int basePos = getPlayerBase(player);
+
+        // CORE: step one at a time, block on occupied safe-zone slots
+        while (remaining > 0) {
+            int next = position + 1;
+
+            // wrap around main track
+            if (next > 67) {
+                next = 1;
+            }
+
+            // entering own safe zone?
+            if (inOwnSafe.test(next)) {
+                // if this slot is free, move in
+                if (!occupied.contains(next)) {
+                    position = next;
+                    remaining--;
+                } else {
+                    // occupied → can't enter: stop here
+                    break;
+                }
+            }
+            // skipping other players' safe zones
+            else if (isOtherPlayerSafeZone(player, next)) {
+                // jump past the entire block
+                if (next >= 13 && next <= 16)      next = 17;
+                else if (next >= 30 && next <= 33) next = 34;
+                else if (next >= 46 && next <= 49) next = 50;
+                else if (next >= 63 && next <= 66) next = 67;
+
+                // treat that jump as one step
+                position = next;
+                remaining--;
+            }
+            // regular main-track movement
+            else {
+                position = next;
+                remaining--;
+            }
+
+            // FIXED: if we just stepped beyond the end of our safe zone, undo and stop
+            // But EXCLUDE the base position check so marbles can move from base
+            if (currentPosition != basePos) { // Skip this check if we're starting from base
                 if ((player == player1 && position > 49) ||
                     (player == player2 && position > 66) ||
                     (player == player3 && position > 16) ||
                     (player == player4 && position > 33)) {
-                    position--; // Move back to last valid position
+                    position--; 
                     break;
                 }
             }
-            return position;
         }
-        
-        int position = currentPosition;
-        int stepsRemaining = steps;
-        
-        while (stepsRemaining > 0) {
-            // Move one position forward
-            position++;
-            
-            // Handle wrapping around the board
-            if (position > 67) {
-                position = 1;
-            }
-            
-            // Check if we're entering a safe zone
-            if (isInSafeZone(player, position)) {
-                stepsRemaining--;
-                
-                // Continue moving within own safe zone
-                while (stepsRemaining > 0) {
-                    position++;
-                    stepsRemaining--;
-                    
-                    // If reached end of safe zone, stop moving
-                    if ((player == player1 && position > 49) ||
-                        (player == player2 && position > 66) ||
-                        (player == player3 && position > 16) ||
-                        (player == player4 && position > 33)) {
-                        position--; // Move back to last valid position
-                        break;
-                    }
-                }
-                
-                break; // Exit loop as we're done moving
-            }
-            
-            // Check if we need to skip other players' safe zones
-            if (isOtherPlayerSafeZone(player, position)) {
-                // Skip to the position after the safe zone
-                if (position >= 13 && position <= 16) { // Player 3's safe zone
-                    position = 17; // Skip to position after safe zone
-                } else if (position >= 30 && position <= 33) { // Player 4's safe zone
-                    position = 34; // Skip to position after safe zone
-                } else if (position >= 46 && position <= 49) { // Player 1's safe zone
-                    position = 50; // Skip to position after safe zone
-                } else if (position >= 63 && position <= 66) { // Player 2's safe zone
-                    position = 67; // Skip to position after safe zone
-                }
-                
-                // Count skipping a safe zone as one step
-                stepsRemaining--;
-            } else {
-                // Regular movement
-                stepsRemaining--;
-            }
-        }
-        
+
         return position;
     }
-    
     /**
      * Process a card being played
      */
@@ -639,6 +642,10 @@ public class Board {
         // Let the current player take their turn
         currentPlayer.takeTurn(this);
     }
+    
+    /**
+     * Get the current position of a marble
+     */
     public int getMarblePosition(Marble marble) {
         return marblePositions.getOrDefault(
           marble,
@@ -646,11 +653,17 @@ public class Board {
         );
     }
 
+    /**
+     * Check if a marble is still in home
+     */
     public boolean isMarbleInHome(Marble marble) {
         return marblesInHome.getOrDefault(marble, false);
     }
+    
     /**
-     * Swap two marbles’ positions (used by Jack’s special move).
+     * Swap two marbles' positions (used by Jack's special move).
+     * This method is kept for compatibility, but will not be used 
+     * since JACK now moves 11 steps.
      */
     public void swapMarbles(Marble a, Marble b) {
         // grab their current board indices
@@ -663,16 +676,42 @@ public class Board {
         marblesInHome.put(a, false);
         marblesInHome.put(b, false);
 
-        // animate them to each other’s spots
-        moveMarbleVisually(a,
+        // animate them to each other's spots
+        TranslateTransition ttA = createMoveAnimation(a, 
             BoardPositions.getX(posB),
             BoardPositions.getY(posB),
             1.0, 0.0);
-        moveMarbleVisually(b,
+        
+        TranslateTransition ttB = createMoveAnimation(b,
             BoardPositions.getX(posA),
             BoardPositions.getY(posA),
             1.0, 0.0);
+        
+        // Start the animations
+        ttA.play();
+        ttB.play();
     }
 
-
+    /**
+     * Helper method to create a marble movement animation
+     */
+    private TranslateTransition createMoveAnimation(Marble marble, double targetX, double targetY, 
+                                              double duration, double delay) {
+        TranslateTransition tt = new TranslateTransition(
+            Duration.seconds(duration), marble);
+        
+        tt.setDelay(Duration.seconds(delay));
+        tt.setByX(targetX - marble.getCenterX());
+        tt.setByY(targetY - marble.getCenterY());
+        
+        tt.setOnFinished(event -> {
+            // Update visual position
+            marble.setCenterX(targetX);
+            marble.setCenterY(targetY);
+            marble.setTranslateX(0);
+            marble.setTranslateY(0);
+        });
+        
+        return tt;
+    }
 }

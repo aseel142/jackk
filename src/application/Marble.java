@@ -28,18 +28,19 @@ public class Marble extends Circle {
         {499, 428}   // Position 4
     };
     
+    // SWAPPED: player3 and player4 home positions are now swapped to match the card positioning and base positions
     private static final double[][] PLAYER3_POSITIONS = {
-        {223, 152},  // Position 1
-        {268, 152},  // Position 2
-        {223, 181},  // Position 3
-        {268, 181}   // Position 4
-    };
-    
-    private static final double[][] PLAYER4_POSITIONS = {
-        {199, 347},  // Position 1
+        {199, 347},  // Position 1 - LEFT side (was player4's position)
         {245, 346},  // Position 2
         {200, 376},  // Position 3
         {245, 376}   // Position 4
+    };
+    
+    private static final double[][] PLAYER4_POSITIONS = {
+        {223, 152},  // Position 1 - TOP of board (was player3's position)
+        {268, 152},  // Position 2
+        {223, 181},  // Position 3
+        {268, 181}   // Position 4
     };
     
     // Color mapping for different players
@@ -50,9 +51,9 @@ public class Marble extends Circle {
             case "player2":
                 return Color.RED;
             case "player3":
-                return Color.BLUE;
+                return Color.BLUE;  // Keeping original color assignments
             case "player4":
-                return Color.GREEN;
+                return Color.GREEN; // Keeping original color assignments
             default:
                 return Color.RED; // Default color
         }
@@ -89,9 +90,9 @@ public class Marble extends Circle {
             case "player2":
                 return PLAYER2_POSITIONS;
             case "player3":
-                return PLAYER3_POSITIONS;
+                return PLAYER3_POSITIONS; // Now points to LEFT side positions
             case "player4":
-                return PLAYER4_POSITIONS;
+                return PLAYER4_POSITIONS; // Now points to TOP of board positions
             default:
                 return PLAYER2_POSITIONS; // Default to player2 positions
         }

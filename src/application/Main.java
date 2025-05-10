@@ -90,10 +90,11 @@ public class Main extends Application {
         phase1Root.getChildren().add(boardView);
         
         // Create players - 3 Beginners and 1 Intermediate
-        player1 = new BeginnerPlayer("player1");
-        player2 = new BeginnerPlayer("player2");
-        player3 = new BeginnerPlayer("player3");
-        player4 = new IntermediatePlayer("player4"); // Player 4 is Intermediate
+        
+        player1 = new NormalPlayer("player1");
+        player2 = new NormalPlayer("player2");
+        player3 = new NormalPlayer("player3");
+        player4 = new NormalPlayer("player4"); 
         
         // Create and initialize the game board
         gameBoard = new Board(phase1Root, player1, player2, player3, player4);

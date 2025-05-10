@@ -28,14 +28,19 @@ public abstract class Player {
         setupHomePositions();
     }
     
+    public String getName() {
+        return name;
+    }
+    
     /**
      * Set up home positions for this player's marbles
+     * FIXED: Swapped home positions for player3 and player4 to match Marble.java
      */
     private void setupHomePositions() {
         switch (name.toLowerCase()) {
             case "player1":
                 homePositions = new double[][] {
-                    {542, 155}, // Position 1
+                    {542, 155}, // Position 1 - RIGHT of board
                     {584, 155}, // Position 2
                     {584, 184}, // Position 3
                     {542, 184}  // Position 4
@@ -44,7 +49,7 @@ public abstract class Player {
                 
             case "player2":
                 homePositions = new double[][] {
-                    {499, 400}, // Position 1
+                    {499, 400}, // Position 1 - BOTTOM of board
                     {540, 400}, // Position 2
                     {540, 428}, // Position 3
                     {499, 428}  // Position 4
@@ -53,19 +58,19 @@ public abstract class Player {
                 
             case "player3":
                 homePositions = new double[][] {
-                    {223, 152}, // Position 1
-                    {268, 152}, // Position 2
-                    {223, 181}, // Position 3
-                    {268, 181}  // Position 4
+                    {199, 347}, // Position 1 - LEFT of board (swapped with player4)
+                    {245, 346}, // Position 2
+                    {200, 376}, // Position 3
+                    {245, 376}  // Position 4
                 };
                 break;
                 
             case "player4":
                 homePositions = new double[][] {
-                    {199, 347}, // Position 1
-                    {245, 346}, // Position 2
-                    {200, 376}, // Position 3
-                    {245, 376}  // Position 4
+                    {223, 152}, // Position 1 - TOP of board (swapped with player3)
+                    {268, 152}, // Position 2
+                    {223, 181}, // Position 3
+                    {268, 181}  // Position 4
                 };
                 break;
         }
@@ -133,28 +138,28 @@ public abstract class Player {
         double rotation = 0;
         
         switch (name.toLowerCase()) {
-            case "player1":
+            case "player2":
                 // Cards at bottom
                 cardX = 300 + (index * 50);
                 cardY = 550;
                 rotation = -10 + (index * 5);
                 break;
                 
-            case "player2":
+            case "player1":
                 // Cards at right
                 cardX = 720;
                 cardY = 200 + (index * 50);
                 rotation = 80 + (index * 5);
                 break;
                 
-            case "player3":
+            case "player4":
                 // Cards at top
                 cardX = 500 - (index * 50);
                 cardY = 50;
                 rotation = 170 + (index * 5);
                 break;
                 
-            case "player4":
+            case "player3":
                 // Cards at left
                 cardX = 80;
                 cardY = 400 - (index * 50);

@@ -77,6 +77,28 @@ public class BoardPositions {
         positionMap.put(65, new double[]{390, 380});
         positionMap.put(66, new double[]{390, 360});
         positionMap.put(67, new double[]{380, 440});
+        
+        // Verify all positions are in the map
+        System.out.println("== BOARD POSITIONS VERIFICATION ==");
+        System.out.println("Total positions in map: " + positionMap.size());
+        
+        // Check important base positions
+        System.out.println("Player1 base (51) exists: " + positionMap.containsKey(51));
+        System.out.println("Player2 base (1) exists: " + positionMap.containsKey(1));
+        System.out.println("Player3 base (18) exists: " + positionMap.containsKey(18));
+        System.out.println("Player4 base (35) exists: " + positionMap.containsKey(35));
+        
+        // Check for missing positions
+        boolean allPositionsExist = true;
+        for (int i = 1; i <= 67; i++) {
+            if (!positionMap.containsKey(i)) {
+                System.out.println("WARNING: Position " + i + " is missing from the map!");
+                allPositionsExist = false;
+            }
+        }
+        if (allPositionsExist) {
+            System.out.println("All positions 1-67 exist in the map.");
+        }
     }
     
     /**
@@ -88,7 +110,13 @@ public class BoardPositions {
         if (position < 1 || position > 67) {
             throw new IllegalArgumentException("Position must be between 1 and 67");
         }
-        return positionMap.get(position);
+        double[] coords = positionMap.get(position);
+        if (coords == null) {
+            System.err.println("ERROR: Position " + position + " has no coordinates in the map!");
+            // Return a fallback position in the center of the board
+            return new double[]{360, 300};
+        }
+        return coords;
     }
     
     /**
