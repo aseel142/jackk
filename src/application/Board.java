@@ -478,7 +478,7 @@ public class Board {
         // Handle backwards movement specially
         if (steps < 0) {
             if (debug) System.out.println("Backward movement not implemented, returning current position");
-            return currentPosition;
+            return calculateBackwardMove(player, currentPosition, steps);
         }
         
         // Get base and safe zone info for this player
@@ -740,17 +740,7 @@ public class Board {
     /**
      * Calculate position for backward movement (negative steps)
      */
-    private int calculateBackwardMove(Player player, int currentPosition, int steps) {
-        // Implement backward movement logic here
-        // For simplicity in this example, we'll just prevent backward movement
-        // by returning the current position
-        
-        // A proper implementation would move backward along the track
-        // and handle safe zones appropriately
-        
-        System.out.println("Backward movement not fully implemented yet");
-        return currentPosition;
-    }
+
     /**
      * Process a card being played
      */
@@ -923,6 +913,83 @@ public class Board {
         // Start the animations
         ttA.play();
         ttB.play();
+    }
+    
+    private int calculateBackwardMove(Player player, int currentPosition, int steps) {
+        // Make sure we're dealing with backward movement
+        if (steps >= 0) {
+            return calculateTargetPosition(player, currentPosition, steps);
+        }
+
+        boolean debug = (player == player2 || player == player3);
+        String playerName = player.getName();
+        
+        if (debug) {
+            System.out.println("\n==== " + playerName + " BACKWARD MOVEMENT CALCULATION ====");
+            System.out.println("Starting position: " + currentPosition);
+            System.out.println("Steps: " + steps);
+        }
+        
+        // Convert to positive for easier calculation
+        int absSteps = Math.abs(steps);
+        int position = currentPosition;
+        
+        // Moving backward step by step
+        for (int i = 0; i < absSteps; i++) {
+            position--;
+            
+            // Wrap around main track
+            if (position < 1) {
+                position = 67;
+                if (debug) System.out.println("Backward wrap from 1 to 67");
+            }
+            
+            if (debug) System.out.println("Backward step: position " + (position+1) + " -> " + position);
+            
+            // Check if we're entering another player's safe zone when moving backward
+            if (isOtherPlayerSafeZone(player, position)) {
+                if (debug) System.out.println("Encountered other player's safe zone at " + position);
+                
+                // Skip past it by finding the last position before that safe zone
+                int skipTo = -1;
+                
+                if (position >= 63 && position <= 66) skipTo = 62;      // Skip red's safe zone
+                else if (position >= 46 && position <= 49) skipTo = 45; // Skip black's safe zone
+                else if (position >= 30 && position <= 33) skipTo = 29; // Skip green's safe zone
+                else if (position >= 13 && position <= 16) skipTo = 12; // Skip blue's safe zone
+                
+                if (debug) System.out.println("Skipping from " + position + " to " + skipTo);
+                position = skipTo;
+            }
+            
+            // Check for collision with own marble
+            boolean occupied = false;
+            for (Marble m : player.getMarbles()) {
+                if (!isMarbleInHome(m) && getMarblePosition(m) != currentPosition) {
+                    if (getMarblePosition(m) == position) {
+                        occupied = true;
+                        if (debug) System.out.println("Position " + position + " is occupied by own marble");
+                        break;
+                    }
+                }
+            }
+            
+            if (occupied) {
+                // If collision, stop movement
+                position = position + 1; // Move back to previous position
+                if (position > 67) position = 1; // Handle wrap around
+                break;
+            }
+        }
+        
+        if (debug) {
+            System.out.println("Final backward position: " + position);
+            if (position == currentPosition) {
+                System.out.println("No backward movement occurred!");
+            }
+        }
+        
+        return position;
     }
 
     /**
