@@ -1,5 +1,8 @@
 package application;
 
+import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.List;
 import java.util.Random;
 
 public class IntermediatePlayer extends Player {
@@ -11,43 +14,234 @@ public class IntermediatePlayer extends Player {
 
     @Override
     public void takeTurn(Board board) {
+        System.out.println(name + ".takeTurn(); hand=" + cards);
+        
         // 1) If no cards left, skip immediately
         if (cards.isEmpty()) {
             board.nextTurn();
             return;
         }
 
-        // 2) Otherwise play as before…
-        //    (for BeginnerPlayer this is simply playing the first card)
-        Card cardToPlay = cards.get(0);
+        // ENHANCEMENT: Find the highest value card to play
+        Card cardToPlay = findBestCardToPlay(board);
+        
+        System.out.println(name + " is playing card: " + cardToPlay);
         board.playCard(this, cardToPlay);
+    }
+    
+    /**
+     * Find the best card to play based on the current board state
+     */
+    private Card findBestCardToPlay(Board board) {
+        // If we have no marbles on board, prioritize ACE or KING to get a marble out
+        if (!hasMarbleOnBoard(board) && hasMarbleInHome(board)) {
+            for (Card card : cards) {
+                if (card.getValue() == Card.Value.ACE || card.getValue() == Card.Value.KING) {
+                    return card;
+                }
+            }
+        }
+        
+        // Otherwise, find a card that can capture an opponent's marble
+        for (Card card : cards) {
+            if (canCaptureWithCard(board, card)) {
+                return card;
+            }
+        }
+        
+        // If no capture is possible, find the highest value card
+        return cards.stream()
+            .max(Comparator.comparingInt(this::getStepsForCard))
+            .orElse(cards.get(0)); // Fallback to first card if something goes wrong
+    }
+    
+    /**
+     * Check if this player has any marbles on the board
+     */
+    private boolean hasMarbleOnBoard(Board board) {
+        for (Marble m : marbles) {
+            if (!board.isMarbleInHome(m)) {
+                return true;
+            }
+        }
+        return false;
+    }
+    
+    /**
+     * Check if we can capture an opponent's marble with this card
+     */
+    private boolean canCaptureWithCard(Board board, Card card) {
+        int steps = getStepsForCard(card);
+        
+        for (Marble m : marbles) {
+            if (!board.isMarbleInHome(m)) {
+                int currPos = board.getMarblePosition(m);
+                int targetPos = board.calculateTargetPosition(this, currPos, steps);
+                
+                // Check if any opponent's marble is at the target position
+                if (isOpponentMarbleAtPosition(board, targetPos)) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
+    }
+    
+    /**
+     * Check if there's an opponent's marble at the specified position
+     */
+    private boolean isOpponentMarbleAtPosition(Board board, int position) {
+        // Check each player's marbles
+        for (int i = 0; i < 4; i++) {
+            Player player = board.getPlayerByIndex(i);
+            
+            // Skip our own marbles
+            if (player == this) {
+                continue;
+            }
+            
+            // Skip partner's marbles (assuming team play: player 0 & 2, player 1 & 3)
+            // Adjust this logic if team structure is different
+            if ((this == board.getPlayerByIndex(0) && player == board.getPlayerByIndex(2)) ||
+                (this == board.getPlayerByIndex(2) && player == board.getPlayerByIndex(0)) ||
+                (this == board.getPlayerByIndex(1) && player == board.getPlayerByIndex(3)) ||
+                (this == board.getPlayerByIndex(3) && player == board.getPlayerByIndex(1))) {
+                continue;
+            }
+            
+            // Check if any of the player's marbles are at this position
+            for (Marble m : player.getMarbles()) {
+                if (!board.isMarbleInHome(m) && board.getMarblePosition(m) == position &&
+                    !board.isInSafeZone(player, position)) {
+                    return true;
+                }
+            }
+        }
+        
+        return false;
     }
 
     @Override
     public void makeMove(Board board, Card card) {
+        System.out.println("\n" + name + ".makeMove() with card: " + card);
         boolean moved = false;
-        int steps = getStepsForCard(card); // JACK→11
-
-        // 1) ACE/KING: bring one out if you still have home marbles
+        int steps = getStepsForCard(card);
+        
+        // PRIORITY 1: If we have ACE/KING and marbles in home, bring one out
         if (hasMarbleInHome(board) &&
-           (card.getValue()==Card.Value.ACE || card.getValue()==Card.Value.KING)) {
-            Marble m = getFirstMarbleInHome(board);
-            board.moveMarbleToPosition(m, getBasePosition(), 1.0, 0.0);
-            moved = true;
-        }
-
-        // 2) All other cards—including JACK—move your chosen marble
-        if (!moved) {
-            Marble best = findMarbleClosestToSafeZone(board);
-            if (best != null) {
-                int curr = board.getMarblePosition(best);
-                int dest = board.calculateTargetPosition(this, curr, steps);
-                board.moveMarbleToPosition(best, dest, 1.0, 0.0);
-                moved = true;
+           (card.getValue() == Card.Value.ACE || card.getValue() == Card.Value.KING)) {
+            
+            // Check if base is free
+            Marble baseMarble = findMarbleOnBase(board);
+            if (baseMarble == null) {
+                Marble m = getFirstMarbleInHome(board);
+                System.out.println(name + " bringing marble out from home to base position " + getBasePosition());
+                board.moveMarbleToPosition(m, getBasePosition(), 1.0, 0.0);
+                return;
             }
         }
-
-
+        
+        // PRIORITY 2: Try to capture an opponent's marble
+        Marble captureMarble = findMarbleForCapture(board, steps);
+        if (captureMarble != null) {
+            int currPos = board.getMarblePosition(captureMarble);
+            int targetPos = board.calculateTargetPosition(this, currPos, steps);
+            
+            System.out.println(name + " CAPTURING marble at position " + targetPos);
+            board.moveMarbleToPosition(captureMarble, targetPos, 1.0, 0.0);
+            return;
+        }
+        
+        // PRIORITY 3: Move the marble closest to safe zone
+        Marble bestMarble = findMarbleClosestToSafeZone(board);
+        if (bestMarble != null) {
+            int currPos = board.getMarblePosition(bestMarble);
+            int targetPos = board.calculateTargetPosition(this, currPos, steps);
+            
+            if (targetPos != currPos) {
+                System.out.println(name + " moving marble closest to safe zone from " + currPos + " to " + targetPos);
+                board.moveMarbleToPosition(bestMarble, targetPos, 1.0, 0.0);
+                return;
+            }
+        }
+        
+        // PRIORITY 4: Move any marble that can move
+        for (Marble m : marbles) {
+            if (!board.isMarbleInHome(m)) {
+                int currPos = board.getMarblePosition(m);
+                int targetPos = board.calculateTargetPosition(this, currPos, steps);
+                
+                if (targetPos != currPos) {
+                    System.out.println(name + " moving marble from " + currPos + " to " + targetPos);
+                    board.moveMarbleToPosition(m, targetPos, 1.0, 0.0);
+                    return;
+                }
+            }
+        }
+        
+        // If we couldn't make any move, advance the turn
+        System.out.println(name + " has NO VALID MOVES, discarding card");
+        board.nextTurn();
+    }
+    
+    /**
+     * Find a marble that can capture an opponent's marble
+     */
+    private Marble findMarbleForCapture(Board board, int steps) {
+        List<Marble> candidateMarbles = new ArrayList<>();
+        
+        for (Marble m : marbles) {
+            if (!board.isMarbleInHome(m)) {
+                int currPos = board.getMarblePosition(m);
+                int targetPos = board.calculateTargetPosition(this, currPos, steps);
+                
+                // Skip if no movement possible
+                if (targetPos == currPos) continue;
+                
+                // Check if target position has an opponent's marble
+                if (isOpponentMarbleAtPosition(board, targetPos)) {
+                    candidateMarbles.add(m);
+                }
+            }
+        }
+        
+        // If we found any marbles that can capture, return the one closest to safe zone
+        if (!candidateMarbles.isEmpty()) {
+            return getBestMarbleFromList(candidateMarbles, board);
+        }
+        
+        return null;
+    }
+    
+    /**
+     * From a list of candidate marbles, find the one closest to safe zone
+     */
+    private Marble getBestMarbleFromList(List<Marble> candidates, Board board) {
+        Marble best = null;
+        int bestDist = Integer.MAX_VALUE;
+        int safeStart = getSafeZoneStart();
+        
+        for (Marble m : candidates) {
+            int pos = board.getMarblePosition(m);
+            int dist = calculateDistanceToSafeZone(pos, safeStart);
+            
+            if (dist < bestDist) {
+                bestDist = dist;
+                best = m;
+            }
+        }
+        
+        return best;
+    }
+    
+    /**
+     * Calculate the distance from a position to the safe zone
+     */
+    private int calculateDistanceToSafeZone(int position, int safeZoneStart) {
+        // Simplified distance calculation
+        // For more complex boards, this would need to account for the track layout
+        return Math.abs(position - safeZoneStart);
     }
 
     // --- Helper methods ---
@@ -69,70 +263,38 @@ public class IntermediatePlayer extends Player {
         }
         return null;
     }
-
-    private Marble findMostAdvancedMarble(Board board) {
-        Marble best = null;
-        int furthest = -1;
+    
+    private Marble findMarbleOnBase(Board board) {
+        int basePos = getBasePosition();
+        
         for (Marble m : marbles) {
             if (!board.isMarbleInHome(m)) {
                 int pos = board.getMarblePosition(m);
-                if (pos > furthest) {
-                    furthest = pos;
-                    best = m;
+                if (pos == basePos) {
+                    return m;
                 }
             }
         }
-        return best;
-    }
-
-    private Marble findBestMarbleToSwapWith(Board board) {
-        Marble bestTarget = null;
-        int maxPos = -1;
-        for (int i = 0; i < 4; i++) {
-            Player opponent = getOpponentByIndex(i, board);
-            for (Marble m : opponent.getMarbles()) {
-                if (!board.isMarbleInHome(m)) {
-                    int pos = board.getMarblePosition(m);
-                    if (pos > maxPos) {
-                        maxPos = pos;
-                        bestTarget = m;
-                    }
-                }
-            }
-        }
-        return bestTarget;
-    }
-
-    private Player getOpponentByIndex(int idx, Board board) {
-        // 0=player1,1=player2,2=player3,3=player4
-        return board.getPlayerByIndex(idx);
-    }
-
-    private boolean wouldMoveToSafeZone(Board board, Card card) {
-        for (Marble m : marbles) {
-            if (!board.isMarbleInHome(m)) {
-                int pos = board.getMarblePosition(m);
-                int next = board.calculateTargetPosition(this, pos, getStepsForCard(card));
-                if (board.isInSafeZone(this, next)) return true;
-            }
-        }
-        return false;
+        return null;
     }
 
     private Marble findMarbleClosestToSafeZone(Board board) {
         Marble best = null;
         int bestDist = Integer.MAX_VALUE;
+        int safeZoneStart = getSafeZoneStart();
+        
         for (Marble m : marbles) {
             if (!board.isMarbleInHome(m)) {
                 int pos = board.getMarblePosition(m);
-                int safeStart = getSafeZoneStart();
-                int dist = Math.abs(safeStart - pos);
+                int dist = calculateDistanceToSafeZone(pos, safeZoneStart);
+                
                 if (dist < bestDist) {
                     bestDist = dist;
                     best = m;
                 }
             }
         }
+        
         return best;
     }
 

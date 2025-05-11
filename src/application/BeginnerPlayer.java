@@ -1,7 +1,10 @@
 package application;
 
+import java.util.ArrayList;
+
 /**
- * BeginnerPlayer - Enhanced with extensive debugging
+ * BeginnerPlayer - With improved marble detection and detailed debugging
+ * Using standard java.util classes for compatibility
  */
 public class BeginnerPlayer extends Player {
 
@@ -11,15 +14,13 @@ public class BeginnerPlayer extends Player {
 
     @Override
     public void takeTurn(Board board) {
-        System.out.println("\n" + name + ".takeTurn() - hand size: " + cards.size());
+        System.out.println("\n" + name + ".takeTurn() with hand: " + cards);
         
         // Simple strategy: play the first card in hand
         if (!cards.isEmpty()) {
             Card cardToPlay = cards.get(0);
             System.out.println(name + " is playing card: " + cardToPlay);
             board.playCard(this, cardToPlay);
-        } else {
-            System.out.println(name + " has no cards to play!");
         }
     }
 
@@ -28,86 +29,123 @@ public class BeginnerPlayer extends Player {
         System.out.println("\n" + name + ".makeMove() with card: " + card);
         boolean moved = false;
         int steps = getStepsForCard(card);
-        System.out.println(name + " - Card translates to " + steps + " steps");
-        
-        // STEP 1: Look for marbles on base position (highest priority)
-        Marble baseMarble = findMarbleOnBase(board);
         int basePos = getBasePosition();
-        System.out.println(name + " - Base position is: " + basePos);
         
-        if (baseMarble != null) {
-            System.out.println(name + " has a marble on base position");
-            int currPos = board.getMarblePosition(baseMarble);
-            System.out.println(name + " - Current position of base marble: " + currPos);
-            
-            int targetPos = board.calculateTargetPosition(this, currPos, steps);
-            System.out.println(name + " - Target position calculated: " + targetPos);
-            
-            // Is the target position different from current position?
-            System.out.println(name + " - Will marble move? " + (targetPos != currPos ? "YES" : "NO"));
-            
-            if (targetPos != currPos) {
-                System.out.println(name + " - MOVING marble from base position " + currPos + " to " + targetPos);
-                board.moveMarbleToPosition(baseMarble, targetPos, 1.0, 0.0);
-                moved = true;
-                return; // Successfully moved a base marble, we're done
-            } else {
-                System.out.println(name + " - NOT MOVING marble because target position equals current position");
-            }
-        } else {
-            System.out.println(name + " - No marble found on base position " + basePos);
-        }
+        System.out.println(name + " has " + steps + " steps to move");
         
-        // STEP 2: Check for any other marble on board we can move
-        System.out.println(name + " - Checking for other marbles on board to move");
+        // Get a complete inventory of all marbles and their positions
+        System.out.println(name + " marble inventory:");
+        int marblesOnBoard = 0;
+        int marblesInHome = 0;
+        int marblesOnBase = 0;
+        
         for (Marble m : marbles) {
-            if (!board.isMarbleInHome(m) && (baseMarble == null || m != baseMarble)) {
-                int currPos = board.getMarblePosition(m);
-                System.out.println(name + " - Found marble at position: " + currPos);
+            if (board.isMarbleInHome(m)) {
+                marblesInHome++;
+                System.out.println("- Marble " + marbles.indexOf(m) + " is in HOME");
+            } else {
+                int pos = board.getMarblePosition(m);
+                marblesOnBoard++;
                 
-                int targetPos = board.calculateTargetPosition(this, currPos, steps);
-                System.out.println(name + " - Target position calculated: " + targetPos);
-                
-                // As long as it changes position, move it
-                if (targetPos != currPos) {
-                    System.out.println(name + " - MOVING this marble from position " + currPos + " to " + targetPos);
-                    board.moveMarbleToPosition(m, targetPos, 1.0, 0.0);
-                    moved = true;
-                    return; // Successfully moved a board marble, we're done
+                if (pos == basePos) {
+                    marblesOnBase++;
+                    System.out.println("- Marble " + marbles.indexOf(m) + " is on BASE (position " + pos + ")");
                 } else {
-                    System.out.println(name + " - NOT MOVING this marble (target equals current)");
+                    System.out.println("- Marble " + marbles.indexOf(m) + " is on BOARD at position " + pos);
                 }
             }
         }
         
-        // STEP 3: Try to bring out a new marble with ACE/KING
+        System.out.println(name + " has " + marblesOnBoard + " marble(s) on board, " + 
+                          marblesOnBase + " on base, and " + marblesInHome + " in home");
+        
+        // PRIORITY 1: If we have a marble on the base position, always move it first
+        Marble baseMarble = findMarbleOnBase(board);
+        if (baseMarble != null) {
+            int currPos = board.getMarblePosition(baseMarble);
+            System.out.println("Found marble on base at position " + currPos);
+            
+            // Double-check currPos matches basePos
+            if (currPos != basePos) {
+                System.out.println("WARNING: Base position mismatch! currPos=" + currPos + ", basePos=" + basePos);
+            }
+            
+            int targetPos = board.calculateTargetPosition(this, currPos, steps);
+            System.out.println("Target position for base marble: " + targetPos);
+            
+            // Only move if it changes position
+            if (targetPos != currPos) {
+                System.out.println(name + " MOVING marble from base position " + currPos + " to " + targetPos);
+                board.moveMarbleToPosition(baseMarble, targetPos, 1.0, 0.0);
+                moved = true;
+                return; // Successfully moved a base marble
+            } else {
+                System.out.println("Cannot move base marble - target position equals current position");
+            }
+        } else if (marblesOnBase > 0) {
+            System.out.println("WARNING: Detected " + marblesOnBase + " marbles on base but findMarbleOnBase returned null!");
+        }
+        
+        // PRIORITY 2: Try ALL marbles on board that can move (not just the furthest)
+        System.out.println("Checking ALL marbles on board for possible moves:");
+        ArrayList<Marble> movableMarblesInfo = new ArrayList<Marble>();
+        
+        for (Marble m : marbles) {
+            if (!board.isMarbleInHome(m) && (baseMarble == null || m != baseMarble)) {
+                int currPos = board.getMarblePosition(m);
+                int targetPos = board.calculateTargetPosition(this, currPos, steps);
+                
+                String moveInfo = "Marble at position " + currPos + " -> target " + targetPos;
+                if (targetPos != currPos) {
+                    moveInfo += " (CAN MOVE)";
+                    movableMarblesInfo.add(m);
+                } else {
+                    moveInfo += " (cannot move)";
+                }
+                System.out.println("- " + moveInfo);
+            }
+        }
+        
+        // If we have any marbles that can move, move the first one
+        if (!movableMarblesInfo.isEmpty()) {
+            Marble marbleToMove = movableMarblesInfo.get(0);
+            int currPos = board.getMarblePosition(marbleToMove);
+            int targetPos = board.calculateTargetPosition(this, currPos, steps);
+            
+            System.out.println(name + " MOVING marble from position " + currPos + " to " + targetPos);
+            board.moveMarbleToPosition(marbleToMove, targetPos, 1.0, 0.0);
+            moved = true;
+            return; // Successfully moved a marble
+        } else if (marblesOnBoard > 0) {
+            System.out.println("Found " + marblesOnBoard + " marbles on board but NONE can move with " + steps + " steps");
+        }
+        
+        // PRIORITY 3: If we have ACE/KING and marbles in home, bring one out
         if (!moved && hasMarbleInHome(board) && 
            (card.getValue() == Card.Value.ACE || card.getValue() == Card.Value.KING)) {
             
-            System.out.println(name + " - Trying to bring a marble out from home with ACE/KING");
-            
             // Check if base position is free
             boolean baseOccupied = (findMarbleOnBase(board) != null);
-            System.out.println(name + " - Is base position occupied? " + baseOccupied);
+            System.out.println("Base position " + basePos + " occupied? " + baseOccupied);
             
             if (!baseOccupied) {
                 Marble homeMarble = getFirstMarbleInHome(board);
                 if (homeMarble != null) {
-                    System.out.println(name + " - BRINGING marble out from home to base position " + basePos);
+                    System.out.println(name + " BRINGING marble out from home to base position " + basePos);
                     board.moveMarbleToPosition(homeMarble, basePos, 1.0, 0.0);
                     moved = true;
-                    return; // Successfully brought out a marble, we're done
+                    return; // Successfully brought out a marble
                 } else {
-                    System.out.println(name + " - No marbles found in home (???)");
+                    System.out.println("ERROR: hasMarbleInHome returned true but getFirstMarbleInHome returned null!");
                 }
             } else {
-                System.out.println(name + " - Cannot bring marble out because base is occupied");
+                System.out.println("Cannot bring marble from home because base is occupied");
             }
         }
         
-        // STEP 4: If we couldn't make any move, advance the turn
+        // If we couldn't make any move, advance the turn
         if (!moved) {
-            System.out.println(name + " - NO VALID MOVES, discarding card");
+            System.out.println(name + " has NO VALID MOVES, discarding card");
             board.nextTurn();
         }
     }
@@ -168,7 +206,6 @@ public class BeginnerPlayer extends Player {
     
     /**
      * Get steps for card value
-     * JACK is now 11 steps instead of swapping
      */
     private int getStepsForCard(Card card) {
         switch (card.getValue()) {

@@ -92,7 +92,7 @@ public class Main extends Application {
         // Create players - 3 Beginners and 1 Intermediate
         
         player1 = new NormalPlayer("player1");
-        player2 = new NormalPlayer("player2");
+        player2 = new IntermediatePlayer("player2");
         player3 = new NormalPlayer("player3");
         player4 = new NormalPlayer("player4"); 
         

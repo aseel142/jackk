@@ -2,13 +2,10 @@ package application;
 
 import java.util.Comparator;
 import java.util.List;
+import java.util.ArrayList;
 
 /**
- * NormalPlayer - same move logic as BeginnerPlayer, but chooses its card
- * by rules:
- *   1) if no on-board marbles and an ACE/KING in hand → play one of those
- *   2) else if base slot empty and an ACE/KING in hand → play one of those
- *   3) otherwise play the highest-move-value card (QUEEN=12, JACK=11, TEN=10, etc.)
+ * NormalPlayer - Keeps original card selection strategy but uses improved movement priorities
  */
 public class NormalPlayer extends Player {
 
@@ -18,7 +15,7 @@ public class NormalPlayer extends Player {
 
     @Override
     public void takeTurn(Board board) {
-    	System.out.println(name + ".takeTurn(); hand=" + cards);
+        System.out.println(name + ".takeTurn(); hand=" + cards);
 
         // 1) skip if empty hand
         if (cards.isEmpty()) {
@@ -29,31 +26,44 @@ public class NormalPlayer extends Player {
         int basePos = getBasePosition();
 
         // compute on-board and base occupancy
-        List<Marble> onBoard = marbles.stream()
-            .filter(m -> !board.isMarbleInHome(m))
-            .toList();
-        boolean hasOnBoard    = !onBoard.isEmpty();
-        boolean baseOccupied  = onBoard.stream()
-            .anyMatch(m -> board.getMarblePosition(m) == basePos);
+        List<Marble> onBoard = new ArrayList<>();
+        for (Marble m : marbles) {
+            if (!board.isMarbleInHome(m)) {
+                onBoard.add(m);
+            }
+        }
+        
+        boolean hasOnBoard = !onBoard.isEmpty();
+        
+        // Check if we have a marble on base
+        boolean baseOccupied = false;
+        for (Marble m : onBoard) {
+            if (board.getMarblePosition(m) == basePos) {
+                baseOccupied = true;
+                break;
+            }
+        }
 
         // find any ACE or KING in hand
-        Card aceOrKing = cards.stream()
-            .filter(c -> c.getValue() == Card.Value.ACE 
-                      || c.getValue() == Card.Value.KING)
-            .findFirst()
-            .orElse(null);
+        Card aceOrKing = null;
+        for (Card c : cards) {
+            if (c.getValue() == Card.Value.ACE || c.getValue() == Card.Value.KING) {
+                aceOrKing = c;
+                break;
+            }
+        }
 
         Card toPlay;
 
-        // rule 1
+        // rule 1: if no on-board marbles and an ACE/KING in hand → play one of those
         if (!hasOnBoard && aceOrKing != null) {
             toPlay = aceOrKing;
         }
-        // rule 2
-        else if (!baseOccupied && aceOrKing != null) {
+        // rule 2: if base slot empty and an ACE/KING in hand → play one of those
+        else if (!baseOccupied && aceOrKing != null && hasMarbleInHome(board)) {
             toPlay = aceOrKing;
         }
-        // rule 3: highest move-value
+        // rule 3: otherwise play the highest-move-value card
         else {
             toPlay = cards.stream()
                 .max(Comparator.comparingInt(this::cardMoveValue))
@@ -66,91 +76,184 @@ public class NormalPlayer extends Player {
     @Override
     public void makeMove(Board board, Card card) {
         boolean moved = false;
+        int steps = getStepsForCard(card);
         int basePos = getBasePosition();
-
-        // 1) Figure out how many steps this card is worth
-        int steps;
-        switch(card.getValue()) {
-            case ACE:   steps = 1;   break;
-            case KING:  steps = 13;  break;
-            case JACK:  steps = 11;  break;
-            default:    steps = getStepsForCard(card);
+        
+        // PRIORITY 1: If we have a marble on the base position, always move it first
+        Marble baseMarble = findMarbleOnBase(board);
+        if (baseMarble != null) {
+            int currPos = board.getMarblePosition(baseMarble);
+            int targetPos = board.calculateTargetPosition(this, currPos, steps);
+            
+            // Only move if it changes position
+            if (targetPos != currPos) {
+                System.out.println(name + " moving marble from base position");
+                board.moveMarbleToPosition(baseMarble, targetPos, 1.0, 0.0);
+                moved = true;
+                return; // Successfully moved a base marble
+            }
         }
-
-        // 2) ACE or KING: try to bring a new marble out if your base is still free
-        if ((card.getValue() == Card.Value.ACE || card.getValue() == Card.Value.KING)
-             && hasMarbleInHome(board)) {
-            boolean baseOccupied = marbles.stream()
-                .filter(m -> !board.isMarbleInHome(m))
-                .anyMatch(m -> board.getMarblePosition(m) == basePos);
+        
+        // PRIORITY 2: Try to move any marble that's furthest along on the track
+        Marble furthestMarble = findFurthestMarble(board);
+        if (furthestMarble != null && (baseMarble == null || furthestMarble != baseMarble)) {
+            int currPos = board.getMarblePosition(furthestMarble);
+            int targetPos = board.calculateTargetPosition(this, currPos, steps);
+            
+            // Only move if it changes position
+            if (targetPos != currPos) {
+                System.out.println(name + " moving furthest marble from position " + currPos);
+                board.moveMarbleToPosition(furthestMarble, targetPos, 1.0, 0.0);
+                moved = true;
+                return; // Successfully moved the furthest marble
+            }
+        }
+        
+        // PRIORITY 3: Try to move ANY marble on the board that can move
+        for (Marble m : marbles) {
+            if (!board.isMarbleInHome(m) && 
+                (baseMarble == null || m != baseMarble) && 
+                (furthestMarble == null || m != furthestMarble)) {
+                
+                int currPos = board.getMarblePosition(m);
+                int targetPos = board.calculateTargetPosition(this, currPos, steps);
+                
+                // Only move if it changes position
+                if (targetPos != currPos) {
+                    System.out.println(name + " moving marble from position " + currPos);
+                    board.moveMarbleToPosition(m, targetPos, 1.0, 0.0);
+                    moved = true;
+                    return; // Successfully moved a marble
+                }
+            }
+        }
+        
+        // PRIORITY 4: If we have ACE/KING and marbles in home, bring one out
+        if (!moved && hasMarbleInHome(board) && 
+           (card.getValue() == Card.Value.ACE || card.getValue() == Card.Value.KING)) {
+            
+            // Check if base position is free
+            boolean baseOccupied = (findMarbleOnBase(board) != null);
+            
             if (!baseOccupied) {
-                // animate new marble onto the track
-                Marble newcomer = getFirstMarbleInHome(board);
-                board.moveMarbleToPosition(newcomer, basePos, 1.0, 0.0);
-                moved = true;
+                Marble homeMarble = getFirstMarbleInHome(board);
+                if (homeMarble != null) {
+                    System.out.println(name + " bringing marble out from home to base");
+                    board.moveMarbleToPosition(homeMarble, basePos, 1.0, 0.0);
+                    moved = true;
+                    return; // Successfully brought out a marble
+                }
             }
         }
-
-        // 3) GENERIC MOVE (this must run for *every* card type if we still haven't moved):
+        
+        // If we couldn't make any move, advance the turn
         if (!moved) {
-            // pick the marble that actually advances (and in NormalPlayer the one
-            // that lands furthest, but for BeginnerPlayer the first one is fine)
-            Marble toMove = marbles.stream()
-                .filter(m -> !board.isMarbleInHome(m))
-                .filter(m -> {
-                    int curr = board.getMarblePosition(m);
-                    int dest = board.calculateTargetPosition(this, curr, steps);
-                    return dest != curr;
-                })
-                .findFirst()
-                .orElse(null);
-
-            if (toMove != null) {
-                int curr = board.getMarblePosition(toMove);
-                int dest = board.calculateTargetPosition(this, curr, steps);
-                board.moveMarbleToPosition(toMove, dest, 1.0, 0.0);
-                moved = true;
-            }
-        }
-
-        // 4) Fallback: if we still never queued anything, advance the turn now
-        if (!moved) {
+            System.out.println(name + " has no valid moves, discarding card");
             board.nextTurn();
         }
     }
-
-    /** @return true if at least one marble is still in home */
+    
+    /**
+     * Find a marble that is currently on this player's base position
+     */
+    private Marble findMarbleOnBase(Board board) {
+        int basePos = getBasePosition();
+        
+        for (Marble m : marbles) {
+            if (!board.isMarbleInHome(m)) {
+                int pos = board.getMarblePosition(m);
+                if (pos == basePos) {
+                    return m;
+                }
+            }
+        }
+        return null; // No marble found on base
+    }
+    
+    /**
+     * Find the marble that has moved furthest along the track
+     */
+    private Marble findFurthestMarble(Board board) {
+        Marble furthest = null;
+        int maxProgress = -1;
+        
+        for (Marble m : marbles) {
+            if (!board.isMarbleInHome(m)) {
+                int currPos = board.getMarblePosition(m);
+                
+                // For simplicity, just use position as progress measure
+                int progress = currPos;
+                
+                if (progress > maxProgress) {
+                    maxProgress = progress;
+                    furthest = m;
+                }
+            }
+        }
+        
+        return furthest;
+    }
+    
+    /**
+     * Check if player has marbles in home
+     */
     private boolean hasMarbleInHome(Board board) {
-        for (Marble m : marbles)
-            if (board.isMarbleInHome(m)) return true;
+        for (Marble m : marbles) {
+            if (board.isMarbleInHome(m)) {
+                return true;
+            }
+        }
         return false;
     }
-
-    /** @return the first marble still in home, or null if none */
+    
+    /**
+     * Find the first marble in home
+     */
     private Marble getFirstMarbleInHome(Board board) {
-        for (Marble m : marbles)
-            if (board.isMarbleInHome(m)) return m;
+        for (Marble m : marbles) {
+            if (board.isMarbleInHome(m)) {
+                return m;
+            }
+        }
         return null;
     }
-
-    /** Map 2–10, QUEEN=12, FOUR=-4; ACE/JACK/KING handled above */
+    
+    /**
+     * Get player's base position
+     */
+    private int getBasePosition() {
+        switch (name.toLowerCase()) {
+            case "player1": return 51;
+            case "player2": return 1;
+            case "player3": return 18;
+            case "player4": return 35;
+            default: return 1;
+        }
+    }
+    
+    /**
+     * Get steps for card value
+     */
     private int getStepsForCard(Card card) {
         switch (card.getValue()) {
+            case ACE:   return 1;
             case TWO:   return 2;
             case THREE: return 3;
-            case FOUR:  return -4;
+            case FOUR:  return -4; // backward
             case FIVE:  return 5;
             case SIX:   return 6;
             case SEVEN: return 7;
             case EIGHT: return 8;
             case NINE:  return 9;
             case TEN:   return 10;
+            case JACK:  return 11; // Changed: JACK now moves 11 steps forward
             case QUEEN: return 12;
+            case KING:  return 13;
             default:    return 0;
         }
     }
-
-    /** Returns the “move value” used for choosing highest card */
+    
+    /** Returns the "move value" used for choosing highest card */
     private int cardMoveValue(Card card) {
         switch (card.getValue()) {
             case ACE:   return 1;
@@ -167,17 +270,6 @@ public class NormalPlayer extends Player {
             case QUEEN: return 12;
             case KING:  return 13;
             default:    return 0;
-        }
-    }
-
-    /** @return this player’s base/entry position */
-    private int getBasePosition() {
-        switch (name.toLowerCase()) {
-            case "player1": return 51;
-            case "player2": return 1;
-            case "player3": return 18;
-            case "player4": return 35;
-            default:        return 1;
         }
     }
 }

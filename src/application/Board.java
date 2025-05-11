@@ -18,13 +18,17 @@ import java.util.Random;
 import java.util.Set;
 import java.util.function.Predicate;
 
+import javafx.application.Platform;
+import javafx.scene.control.Alert;
+import javafx.scene.control.Alert.AlertType;
+
 /**
  * The Board class manages the game state and enforces the rules of Jackaroo
  */
 public class Board {
     // The game board pane
     private Pane gamePane;
-    
+    private boolean gameOver = false;
     // Players
     private Player player1;
     private Player player2;
@@ -376,21 +380,26 @@ public class Board {
      * Check if a player has won
      */
     private void checkForWin() {
-        // Check if Team 1 (Players 1 and 3) has won
+        // Team 1 = players 1 & 3, Team 2 = players 2 & 4
         boolean team1Wins = allMarblesInSafeZone(player1) && allMarblesInSafeZone(player3);
-        
-        // Check if Team 2 (Players 2 and 4) has won
         boolean team2Wins = allMarblesInSafeZone(player2) && allMarblesInSafeZone(player4);
-        
-        if (team1Wins) {
-            System.out.println("Team 1 (Players 1 & 3) wins!");
-            // Handle win (show message, reset game, etc.)
-        } else if (team2Wins) {
-            System.out.println("Team 2 (Players 2 & 4) wins!");
-            // Handle win
+
+        if (team1Wins || team2Wins) {
+            gameOver = true;
+
+            // Show an information dialog on the JavaFX thread:
+            Platform.runLater(() -> {
+                Alert alert = new Alert(AlertType.INFORMATION);
+                alert.setTitle("Game Over");
+                alert.setHeaderText("We have a winner!");
+                String winnerText = team1Wins
+                    ? "Team 1 (Players 1 & 3) wins!"
+                    : "Team 2 (Players 2 & 4) wins!";
+                alert.setContentText(winnerText);
+                alert.showAndWait();
+            });
         }
     }
-    
     /**
      * Check if all of a player's marbles are in their safe zone
      */
@@ -451,76 +460,296 @@ public class Board {
      * Calculates the target position after moving a specified number of steps
      */
     public int calculateTargetPosition(Player player, int currentPosition, int steps) {
-        // first, collect which safe-zone slots are already taken by this player
-        Set<Integer> occupied = new HashSet<>();
+        // Always enable debugging for red and blue players
+        boolean debug = (player == player2 || player == player3);
+        String playerName = player.getName();
+        
+        if (debug) {
+            System.out.println("\n==== " + playerName + " MOVEMENT CALCULATION ====");
+            System.out.println("Starting position: " + currentPosition);
+            System.out.println("Steps: " + steps);
+        }
+        
+        // Skip calculation if no movement
+        if (steps == 0) {
+            return currentPosition;
+        }
+        
+        // Handle backwards movement specially
+        if (steps < 0) {
+            if (debug) System.out.println("Backward movement not implemented, returning current position");
+            return currentPosition;
+        }
+        
+        // Get base and safe zone info for this player
+        int basePos = getPlayerBase(player);
+        boolean startingFromBase = (currentPosition == basePos);
+        
+        // Define safe zone coordinates for each player
+        int safeZoneStart = -1;
+        int safeZoneEnd = -1;
+        int safePosCount = 0;
+        
+        if (player == player1) {  // Black
+            safeZoneStart = 46;
+            safeZoneEnd = 49;
+            safePosCount = 4;
+        } else if (player == player2) {  // Red
+            safeZoneStart = 63;
+            safeZoneEnd = 66;
+            safePosCount = 4;
+        } else if (player == player3) {  // Blue
+            safeZoneStart = 13;
+            safeZoneEnd = 16;
+            safePosCount = 4;
+        } else if (player == player4) {  // Green
+            safeZoneStart = 30;
+            safeZoneEnd = 33;
+            safePosCount = 4;
+        }
+        
+        if (debug) {
+            System.out.println("Player base: " + basePos);
+            System.out.println("Safe zone: " + safeZoneStart + " to " + safeZoneEnd);
+            System.out.println("Starting from base? " + startingFromBase);
+        }
+        
+        // Check for occupied positions (by own marbles)
+        Set<Integer> occupiedPositions = new HashSet<>();
         for (Marble m : player.getMarbles()) {
-            Integer pos = marblePositions.get(m);
-            if (pos != null && isInSafeZone(player, pos)) {
-                occupied.add(pos);
+            if (!isMarbleInHome(m)) {
+                int pos = getMarblePosition(m);
+                if (pos != currentPosition) { // Exclude the marble we're moving
+                    occupiedPositions.add(pos);
+                    if (debug) System.out.println("Found occupied position: " + pos);
+                }
             }
         }
-
-        // helper to test whether a candidate slot is in this player's safe zone
-        Predicate<Integer> inOwnSafe = pos -> isInSafeZone(player, pos);
-
+        
+        // Check if we're approaching our safe zone
+        int distanceToSafeZone = -1;
+        boolean approachingSafeZone = false;
+        
+        // SPECIAL CHECK FOR RED (position 62 is just before Red's safe zone at 63)
+        if (player == player2 && currentPosition == 62) {
+            approachingSafeZone = true;
+            distanceToSafeZone = 1;
+            if (debug) System.out.println("RED is approaching safe zone (pos 62 -> 63)");
+        }
+        // Add similar checks for other players if needed
+        else if (player == player3 && currentPosition == 12) {
+            approachingSafeZone = true;
+            distanceToSafeZone = 1;
+            if (debug) System.out.println("BLUE is approaching safe zone (pos 12 -> 13)");
+        }
+        else if (player == player1 && currentPosition == 45) {
+            approachingSafeZone = true;
+            distanceToSafeZone = 1;
+            if (debug) System.out.println("BLACK is approaching safe zone (pos 45 -> 46)");
+        }
+        else if (player == player4 && currentPosition == 29) {
+            approachingSafeZone = true;
+            distanceToSafeZone = 1;
+            if (debug) System.out.println("GREEN is approaching safe zone (pos 29 -> 30)");
+        }
+        
+        // SPECIAL HANDLING: If we're approaching our safe zone and have enough steps,
+        // prioritize entering it
+        if (approachingSafeZone && steps >= distanceToSafeZone) {
+            if (debug) System.out.println("Special case: Approaching safe zone with enough steps");
+            
+            // Check for collisions with own marbles in safe zone
+            boolean canEnterSafeZone = true;
+            int targetPos = safeZoneStart + Math.min(steps - distanceToSafeZone, safePosCount - 1);
+            
+            if (targetPos > safeZoneEnd) {
+                targetPos = safeZoneEnd;
+                if (debug) System.out.println("Limiting target to safe zone end: " + targetPos);
+            }
+            
+            for (int pos = safeZoneStart; pos <= targetPos; pos++) {
+                if (occupiedPositions.contains(pos)) {
+                    canEnterSafeZone = false;
+                    if (debug) System.out.println("Cannot enter safe zone: position " + pos + " is occupied");
+                    break;
+                }
+            }
+            
+            if (canEnterSafeZone) {
+                if (debug) System.out.println("Entering safe zone directly to position " + targetPos);
+                return targetPos;
+            }
+        }
+        
+        // Standard step-by-step movement
+        if (debug) System.out.println("Starting step-by-step movement");
+        
         int position = currentPosition;
         int remaining = steps;
-
-        // Get the base position for this player
-        int basePos = getPlayerBase(player);
-
-        // CORE: step one at a time, block on occupied safe-zone slots
+        
+        // For blue player, check if we're already in safe zone
+        boolean startingInSafeZone = false;
+        if (player == player3 && position >= safeZoneStart && position <= safeZoneEnd) {
+            startingInSafeZone = true;
+            if (debug) System.out.println("BLUE is already in safe zone at position " + position);
+        }
+        // Also check for other players
+        else if (position >= safeZoneStart && position <= safeZoneEnd) {
+            startingInSafeZone = true;
+            if (debug) System.out.println("Player is already in safe zone at position " + position);
+        }
+        
+        // If already in safe zone, move only within it
+        if (startingInSafeZone) {
+            int newPosition = position + steps;
+            if (newPosition > safeZoneEnd) {
+                newPosition = safeZoneEnd; // Can't go beyond end of safe zone
+                if (debug) System.out.println("Cannot go beyond end of safe zone: " + safeZoneEnd);
+            }
+            
+            // Check for collisions
+            if (occupiedPositions.contains(newPosition)) {
+                if (debug) System.out.println("Cannot move: position " + newPosition + " is occupied");
+                return position; // Can't move if target is occupied
+            }
+            
+            if (debug) System.out.println("Moving within safe zone to " + newPosition);
+            return newPosition;
+        }
+        
+        // Normal step-by-step movement for non-safe zone positions
         while (remaining > 0) {
             int next = position + 1;
-
-            // wrap around main track
+            
+            // Wrap around main track
             if (next > 67) {
                 next = 1;
+                if (debug) System.out.println("Wrapping from 67 to 1");
             }
-
-            // entering own safe zone?
-            if (inOwnSafe.test(next)) {
-                // if this slot is free, move in
-                if (!occupied.contains(next)) {
+            
+            if (debug) System.out.println("Step: position " + position + " -> " + next);
+            
+            // CRITICAL: Check if we should enter our safe zone
+            if ((player == player2 && next == 63) || // Red entering safe zone
+                (player == player3 && next == 13) || // Blue entering safe zone
+                (player == player1 && next == 46) || // Black entering safe zone
+                (player == player4 && next == 30)) { // Green entering safe zone
+                
+                if (debug) System.out.println("Checking safe zone entry at " + next);
+                
+                // Previous position should be the one before safe zone
+                if ((player == player2 && position == 62) || // Red just before safe zone
+                    (player == player3 && position == 12) || // Blue just before safe zone
+                    (player == player1 && position == 45) || // Black just before safe zone
+                    (player == player4 && position == 29)) { // Green just before safe zone
+                    
+                    if (debug) System.out.println("Valid safe zone entry point detected");
+                    
+                    // Ensure we're not skipping our own safe zone
+                    if (!occupiedPositions.contains(next)) {
+                        position = next; // Move into safe zone
+                        remaining--;
+                        if (debug) System.out.println("Entered safe zone at " + position);
+                    } else {
+                        if (debug) System.out.println("Safe zone entry " + next + " is occupied");
+                        break; // Can't enter if occupied
+                    }
+                } else {
+                    // We're approaching from the wrong direction - skip
+                    if (debug) System.out.println("Not approaching from correct entry point, skipping");
                     position = next;
                     remaining--;
-                } else {
-                    // occupied → can't enter: stop here
+                }
+                continue;
+            }
+            
+            // Check if we're in our own safe zone
+            boolean inOwnSafeZone = (next >= safeZoneStart && next <= safeZoneEnd);
+            if (inOwnSafeZone) {
+                if (debug) System.out.println("In own safe zone at " + next);
+                
+                // Check if position is already occupied
+                if (occupiedPositions.contains(next)) {
+                    if (debug) System.out.println("Safe zone position " + next + " is occupied");
+                    break; // Can't move to occupied position
+                }
+                
+                // Check if we're trying to go beyond the end
+                if (next > safeZoneEnd) {
+                    if (debug) System.out.println("Cannot go beyond safe zone end: " + safeZoneEnd);
+                    position = safeZoneEnd;
                     break;
                 }
-            }
-            // skipping other players' safe zones
-            else if (isOtherPlayerSafeZone(player, next)) {
-                // jump past the entire block
-                if (next >= 13 && next <= 16)      next = 17;
-                else if (next >= 30 && next <= 33) next = 34;
-                else if (next >= 46 && next <= 49) next = 50;
-                else if (next >= 63 && next <= 66) next = 67;
-
-                // treat that jump as one step
+                
+                // Move to next position in safe zone
                 position = next;
                 remaining--;
+                continue;
             }
-            // regular main-track movement
-            else {
-                position = next;
+            
+            // Check if we're approaching another player's safe zone
+            if (isOtherPlayerSafeZone(player, next)) {
+                if (debug) System.out.println("Found another player's safe zone at " + next);
+                
+                // Jump past it
+                int skipTo = -1;
+                if (next >= 13 && next <= 16)      skipTo = 17; // Skip blue's safe zone
+                else if (next >= 30 && next <= 33) skipTo = 34; // Skip green's safe zone
+                else if (next >= 46 && next <= 49) skipTo = 50; // Skip black's safe zone
+                else if (next >= 63 && next <= 66) skipTo = 67; // Skip red's safe zone
+                
+                if (debug) System.out.println("Skipping from " + next + " to " + skipTo);
+                position = skipTo;
                 remaining--;
+                continue;
             }
-
-            // FIXED: if we just stepped beyond the end of our safe zone, undo and stop
-            // But EXCLUDE the base position check so marbles can move from base
-            if (currentPosition != basePos) { // Skip this check if we're starting from base
-                if ((player == player1 && position > 49) ||
-                    (player == player2 && position > 66) ||
-                    (player == player3 && position > 16) ||
-                    (player == player4 && position > 33)) {
-                    position--; 
-                    break;
-                }
+            
+            // Check for collision with own marble
+            if (occupiedPositions.contains(next)) {
+                if (debug) System.out.println("Position " + next + " is occupied by own marble");
+                break; // Stop movement
+            }
+            
+            // Regular move
+            position = next;
+            remaining--;
+        }
+        
+        // Final collision check
+        if (occupiedPositions.contains(position)) {
+            if (debug) System.out.println("ERROR: Final position " + position + " occupied by own marble");
+            return currentPosition; // Invalid move
+        }
+        
+        // Final safe zone check
+        if (isOtherPlayerSafeZone(player, position)) {
+            if (debug) System.out.println("ERROR: Final position " + position + " in another player's safe zone");
+            return currentPosition; // Invalid move
+        }
+        
+        if (debug) {
+            System.out.println("Final position: " + position);
+            if (position == currentPosition) {
+                System.out.println("No movement occurred!");
             }
         }
-
+        
         return position;
+    }
+
+    /**
+     * Calculate position for backward movement (negative steps)
+     */
+    private int calculateBackwardMove(Player player, int currentPosition, int steps) {
+        // Implement backward movement logic here
+        // For simplicity in this example, we'll just prevent backward movement
+        // by returning the current position
+        
+        // A proper implementation would move backward along the track
+        // and handle safe zones appropriately
+        
+        System.out.println("Backward movement not fully implemented yet");
+        return currentPosition;
     }
     /**
      * Process a card being played
@@ -604,6 +833,10 @@ public class Board {
      * Move to the next player's turn
      */
     public void nextTurn() {
+        if (gameOver) {
+            // no further turns once the game is over
+            return;
+        }
         // Move to next player
         currentPlayerIndex = (currentPlayerIndex + 1) % 4;
         currentPlayer = getPlayerByIndex(currentPlayerIndex);
