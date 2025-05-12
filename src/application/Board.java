@@ -28,7 +28,7 @@ import javafx.scene.control.Alert.AlertType;
 public class Board {
     // The game board pane
     private Pane gamePane;
-    private boolean gameOver = false;
+    protected boolean gameOver = false;
     // Players
     private Player player1;
     private Player player2;
@@ -379,7 +379,7 @@ public class Board {
     /**
      * Check if a player has won
      */
-    private void checkForWin() {
+    protected void checkForWin() {
         // Team 1 = players 1 & 3, Team 2 = players 2 & 4
         boolean team1Wins = allMarblesInSafeZone(player1) && allMarblesInSafeZone(player3);
         boolean team2Wins = allMarblesInSafeZone(player2) && allMarblesInSafeZone(player4);

@@ -5,7 +5,7 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Random;
 
-public class IntermediatePlayer extends Player {
+public class IntermediatePlayer extends Player implements Teachable {
     private Random random = new Random();
 
     public IntermediatePlayer(String name) {
@@ -551,8 +551,30 @@ public class IntermediatePlayer extends Player {
         return Math.abs(position - safeZoneStart);
     }
 
-    // --- Helper methods ---
+    /**
+     * Find marble closest to safe zone
+     */
+    private Marble findMarbleClosestToSafeZone(Board board) {
+        Marble best = null;
+        int bestDist = Integer.MAX_VALUE;
+        int safeZoneStart = getSafeZoneStart();
+        
+        for (Marble m : marbles) {
+            if (!board.isMarbleInHome(m)) {
+                int pos = board.getMarblePosition(m);
+                int dist = calculateDistanceToSafeZone(pos, safeZoneStart);
+                
+                if (dist < bestDist) {
+                    bestDist = dist;
+                    best = m;
+                }
+            }
+        }
+        
+        return best;
+    }
 
+    // Helper methods for player management
     private boolean hasMarbleInHome(Board board) {
         for (Marble m : marbles) {
             if (board.isMarbleInHome(m)) {
@@ -583,26 +605,6 @@ public class IntermediatePlayer extends Player {
             }
         }
         return null;
-    }
-
-    private Marble findMarbleClosestToSafeZone(Board board) {
-        Marble best = null;
-        int bestDist = Integer.MAX_VALUE;
-        int safeZoneStart = getSafeZoneStart();
-        
-        for (Marble m : marbles) {
-            if (!board.isMarbleInHome(m)) {
-                int pos = board.getMarblePosition(m);
-                int dist = calculateDistanceToSafeZone(pos, safeZoneStart);
-                
-                if (dist < bestDist) {
-                    bestDist = dist;
-                    best = m;
-                }
-            }
-        }
-        
-        return best;
     }
 
     private int getBasePosition() {
@@ -642,5 +644,25 @@ public class IntermediatePlayer extends Player {
             case KING:  return 13;
             default:    return 0;
         }
+    }
+    
+    // ===== Teachable Interface Implementation =====
+    
+    @Override
+    public Player improve() {
+        System.out.println("\n🎓 " + name + " has MASTERED the game and evolved from INTERMEDIATE to PRO level!");
+        
+        // Create a new ProPlayer with the same name
+        ProPlayer improved = new ProPlayer(name);
+        
+        // Transfer any important state if needed
+        // (current position of marbles will be managed by the Board)
+        
+        return improved;
+    }
+    
+    @Override
+    public SkillLevel getSkillLevel() {
+        return SkillLevel.INTERMEDIATE;
     }
 }

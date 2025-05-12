@@ -1,15 +1,11 @@
 package application;
 
 import java.util.ArrayList;
-import java.util.List;
-
-
 
 /**
- * BeginnerPlayer - With improved marble detection and detailed debugging
- * Using standard java.util classes for compatibility
+ * BeginnerPlayer - With improved marble detection and Teachable interface
  */
-public class BeginnerPlayer extends Player {
+public class BeginnerPlayer extends Player implements Teachable {
 
     public BeginnerPlayer(String name) {
         super(name);
@@ -62,19 +58,15 @@ public class BeginnerPlayer extends Player {
         System.out.println(name + " has " + marblesOnBoard + " marble(s) on board, " + 
                           marblesOnBase + " on base, and " + marblesInHome + " in home");
         
-        // NEW CHECK: If the card moves backward and we have marbles in safe zone, don't try to move those
+        // Special handling for backward movement
         if (steps < 0) {
-            System.out.println("Card has negative movement (" + steps + "), checking for marbles in safe zone");
-            List<Marble> movableMarblesNotInSafeZone = new ArrayList<>();
+            ArrayList<Marble> movableMarblesNotInSafeZone = new ArrayList<Marble>();
             
             for (Marble m : marbles) {
                 if (!board.isMarbleInHome(m)) {
                     int pos = board.getMarblePosition(m);
                     if (!board.isInSafeZone(this, pos)) {
                         movableMarblesNotInSafeZone.add(m);
-                        System.out.println("- Marble at position " + pos + " is not in safe zone, can be moved backward");
-                    } else {
-                        System.out.println("- Marble at position " + pos + " is in safe zone, cannot be moved backward");
                     }
                 }
             }
@@ -266,5 +258,25 @@ public class BeginnerPlayer extends Player {
             case KING:  return 13;
             default:    return 0;
         }
+    }
+    
+    // ===== Teachable Interface Implementation =====
+    
+    @Override
+    public Player improve() {
+        System.out.println("\n🎓 " + name + " has LEARNED and evolved from BEGINNER to INTERMEDIATE level!");
+        
+        // Create a new IntermediatePlayer with the same name
+        IntermediatePlayer improved = new IntermediatePlayer(name);
+        
+        // Transfer any important state if needed
+        // (current position of marbles will be managed by the Board)
+        
+        return improved;
+    }
+    
+    @Override
+    public SkillLevel getSkillLevel() {
+        return SkillLevel.BEGINNER;
     }
 }
