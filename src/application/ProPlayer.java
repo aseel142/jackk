@@ -5,12 +5,15 @@ import java.util.List;
 
 /**
  * ProPlayer - Focuses exclusively on the shortcut strategy using ACE -> FOUR -> Safe Zone entry
- * With additional safeguards to prevent stacking marbles and skipping safe zones
+ * With additional focus on prioritizing marbles close to the safe zone
  */
 public class ProPlayer extends Player {
     
     private boolean shortcutActive = false;
     private Marble shortcutMarble = null;
+    
+    // Maximum distance to consider a marble "close" to safe zone
+    private static final int CLOSE_TO_SAFEZONE_THRESHOLD = 10;
     
     public ProPlayer(String name) {
         super(name);
@@ -37,12 +40,12 @@ public class ProPlayer extends Player {
      * Select the best card to play based on the current board state and our strategy
      */
     private Card selectBestCard(Board board) {
-        // HIGHEST PRIORITY: If we have a marble on base and a FOUR card, always play the FOUR
+        // PRIORITY 1: If we have a marble on base and a FOUR card, always play the FOUR
         Marble baseMarble = findMarbleOnBase(board);
         if (baseMarble != null) {
             for (Card card : cards) {
                 if (card.getValue() == Card.Value.FOUR) {
-                    System.out.println(name + " playing FOUR to move marble backward from base");
+                    System.out.println(name + " playing FOUR to move marble backward from base - HIGHEST PRIORITY");
                     shortcutActive = true; 
                     shortcutMarble = baseMarble;
                     return card;
@@ -50,7 +53,21 @@ public class ProPlayer extends Player {
             }
         }
         
-        // If we have ACE and no marble on base and at least one marble in home, play ACE
+        // PRIORITY 2: Check for marbles close to safe zone (within 10 steps)
+        Marble closeToSafeZoneMarble = findMarbleCloseToSafeZone(board, CLOSE_TO_SAFEZONE_THRESHOLD);
+        if (closeToSafeZoneMarble != null) {
+            int pos = board.getMarblePosition(closeToSafeZoneMarble);
+            int stepsNeeded = distanceToSafeZone(board, pos);
+            
+            // Find the card that gets us closest to or into the safe zone
+            Card bestCard = findBestCardForSafeZoneEntry(board, closeToSafeZoneMarble, stepsNeeded);
+            if (bestCard != null) {
+                System.out.println(name + " playing " + bestCard + " to move marble close to safe zone");
+                return bestCard;
+            }
+        }
+        
+        // PRIORITY 3: If we have ACE/KING and no marble on base and at least one marble in home, play ACE/KING
         if (baseMarble == null && hasMarbleInHome(board)) {
             for (Card card : cards) {
                 if (card.getValue() == Card.Value.ACE || card.getValue() == Card.Value.KING) {
@@ -60,33 +77,24 @@ public class ProPlayer extends Player {
             }
         }
         
-        // If we have a marble at position after backward movement (e.g., position 60 for player 2)
+        // PRIORITY 4: If we have a marble at position after backward movement
         // and we have a card that can move it into the safe zone, play it
         if (shortcutActive && shortcutMarble != null) {
             int pos = board.getMarblePosition(shortcutMarble);
             int backwardPos = getShortcutBackwardPosition();
             
             if (pos == backwardPos) {
-                // For player 2, from position 60, we need at least 3 steps to reach safe zone
-                int stepsNeeded = getStepsToSafeZone(pos);
+                int stepsNeeded = distanceToSafeZone(board, pos);
                 
-                // Find a card that gets us exactly to or beyond the safe zone entry
-                // but not skipping the safe zone entirely
+                // Find a card that moves us closer to or into the safe zone
                 for (Card card : cards) {
                     int steps = getStepsForCard(card);
                     
-                    // We want cards that move at least the needed steps,
-                    // but for safety, not too many steps beyond the safe zone end
-                    if (steps >= stepsNeeded && !wouldSkipSafeZone(pos, steps)) {
-                        System.out.println(name + " playing card to enter safe zone from shortcut position");
-                        return card;
-                    }
-                }
-                
-                // If no ideal card, find any card that moves us closer to the safe zone
-                for (Card card : cards) {
-                    int steps = getStepsForCard(card);
-                    if (steps > 0 && steps < stepsNeeded) {
+                    // Skip backward movement cards 
+                    if (steps <= 0) continue;
+                    
+                    // Try to find a card that gets us closer
+                    if (steps > 0) {
                         System.out.println(name + " playing card to move toward safe zone from shortcut position");
                         return card;
                     }
@@ -94,7 +102,7 @@ public class ProPlayer extends Player {
             }
         }
         
-        // Look for a card to enter the safe zone if we have a marble at the entry point
+        // PRIORITY 5: Look for a card to enter the safe zone if we have a marble at the entry point
         Marble entryMarble = findMarbleAtSafeZoneEntry(board);
         if (entryMarble != null) {
             for (Card card : cards) {
@@ -105,16 +113,83 @@ public class ProPlayer extends Player {
             }
         }
         
-        // Look for opportunities to capture
+        // PRIORITY 6: Look for opportunities to capture
         Card captureCard = findCaptureCard(board);
         if (captureCard != null) {
             System.out.println(name + " playing card to capture opponent's marble");
             return captureCard;
         }
         
-        // Default to the first card if no strategy applies
+        // PRIORITY 7: Default to the first card if no strategy applies
         System.out.println(name + " playing default card");
         return cards.get(0);
+    }
+    
+    /**
+     * Find the best card to move a marble into or closer to the safe zone
+     */
+    private Card findBestCardForSafeZoneEntry(Board board, Marble marble, int stepsNeeded) {
+        Card bestCard = null;
+        int bestScore = Integer.MIN_VALUE;
+        
+        for (Card card : cards) {
+            int steps = getStepsForCard(card);
+            
+            // Skip backward moving cards
+            if (steps <= 0) continue;
+            
+            int currPos = board.getMarblePosition(marble);
+            int targetPos = board.calculateTargetPosition(this, currPos, steps);
+            
+            // Skip if target equals current (no movement possible)
+            if (targetPos == currPos) continue;
+            
+            // Calculate a score based on how good this move is
+            int score = evaluateSafeZoneMove(board, currPos, targetPos, steps, stepsNeeded);
+            
+            if (score > bestScore) {
+                bestScore = score;
+                bestCard = card;
+            }
+        }
+        
+        return bestCard;
+    }
+    
+    /**
+     * Evaluate how good a move is for getting to the safe zone
+     */
+    private int evaluateSafeZoneMove(Board board, int currentPos, int targetPos, int steps, int stepsNeeded) {
+        int score = 0;
+        
+        // Check if this move gets us into the safe zone
+        if (board.isInSafeZone(this, targetPos)) {
+            score += 1000; // Huge bonus for entering safe zone
+        }
+        
+        // Check if this gets us exactly to the safe zone entry
+        if (targetPos == getSafeZoneStart()) {
+            score += 500; // Big bonus for landing exactly at entry point
+        }
+        
+        // Calculate how much closer this gets us to the safe zone
+        int currentDist = distanceToSafeZone(board, currentPos);
+        int targetDist = distanceToSafeZone(board, targetPos);
+        int improvement = currentDist - targetDist;
+        
+        // Bonus for getting closer to safe zone
+        score += improvement * 50;
+        
+        // Prefer cards that use more of their steps effectively
+        if (steps <= stepsNeeded) {
+            score += 10 * steps; // Bonus proportional to steps used
+        } else {
+            // Penalty for using a card with more steps than needed
+            // but still maintaining proximity bonus
+            score += 10 * stepsNeeded - (steps - stepsNeeded) * 5;
+        }
+        
+        return score;
     }
     
     @Override
@@ -122,7 +197,23 @@ public class ProPlayer extends Player {
         System.out.println("\n" + name + ".makeMove() with card: " + card);
         int steps = getStepsForCard(card);
         
-        // CASE 1: ACE/KING to bring marble out from home
+        // PRIORITY 1: Marble close to safe zone (within 10 steps)
+        if (steps > 0) {
+            Marble closeToSafeZoneMarble = findMarbleCloseToSafeZone(board, CLOSE_TO_SAFEZONE_THRESHOLD);
+            if (closeToSafeZoneMarble != null) {
+                int currPos = board.getMarblePosition(closeToSafeZoneMarble);
+                int targetPos = board.calculateTargetPosition(this, currPos, steps);
+                
+                // Only move if it changes position
+                if (targetPos != currPos) {
+                    System.out.println(name + " moving marble close to safe zone from " + currPos + " to " + targetPos);
+                    board.moveMarbleToPosition(closeToSafeZoneMarble, targetPos, 1.0, 0.0);
+                    return;
+                }
+            }
+        }
+        
+        // PRIORITY 2: ACE/KING to bring marble out from home
         if ((card.getValue() == Card.Value.ACE || card.getValue() == Card.Value.KING) && 
             hasMarbleInHome(board)) {
             
@@ -139,7 +230,7 @@ public class ProPlayer extends Player {
             }
         }
         
-        // CASE 2: FOUR to move backward from base
+        // PRIORITY 3: FOUR to move backward from base
         if (card.getValue() == Card.Value.FOUR) {
             Marble baseMarble = findMarbleOnBase(board);
             if (baseMarble != null) {
@@ -151,7 +242,7 @@ public class ProPlayer extends Player {
             }
         }
         
-        // CASE 3: When we have a marble at shortcut position (e.g., position 60 for player 2)
+        // PRIORITY 4: When we have a marble at shortcut position
         if (shortcutActive && shortcutMarble != null) {
             int pos = board.getMarblePosition(shortcutMarble);
             int backwardPos = getShortcutBackwardPosition();
@@ -166,7 +257,7 @@ public class ProPlayer extends Player {
                     board.moveMarbleToPosition(shortcutMarble, targetPos, 1.0, 0.0);
                     
                     // If we reach the safe zone, reset the shortcut tracking
-                    if (isSafeZonePosition(targetPos)) {
+                    if (board.isInSafeZone(this, targetPos)) {
                         shortcutActive = false;
                         shortcutMarble = null;
                     }
@@ -175,17 +266,21 @@ public class ProPlayer extends Player {
             }
         }
         
-        // CASE 4: Enter safe zone from entry point
+        // PRIORITY 5: Enter safe zone from entry point
         Marble entryMarble = findMarbleAtSafeZoneEntry(board);
-        if (entryMarble != null && steps == 1) {
+        if (entryMarble != null && steps > 0) {
             int currPos = board.getMarblePosition(entryMarble);
             int targetPos = board.calculateTargetPosition(this, currPos, steps);
-            System.out.println(name + " entering safe zone from entry point");
-            board.moveMarbleToPosition(entryMarble, targetPos, 1.0, 0.0);
-            return;
+            
+            // Move into or through safe zone
+            if (targetPos != currPos) {
+                System.out.println(name + " entering or moving through safe zone from entry point");
+                board.moveMarbleToPosition(entryMarble, targetPos, 1.0, 0.0);
+                return;
+            }
         }
         
-        // CASE 5: Capture an opponent's marble
+        // PRIORITY 6: Capture an opponent's marble
         Marble captureMarble = findMarbleForCapture(board, steps);
         if (captureMarble != null) {
             int currPos = board.getMarblePosition(captureMarble);
@@ -195,7 +290,7 @@ public class ProPlayer extends Player {
             return;
         }
         
-        // CASE 6: Move a marble that's in safe zone
+        // PRIORITY 7: Move a marble that's in safe zone
         Marble safeMarble = findMarbleInSafeZone(board);
         if (safeMarble != null && steps > 0) {
             int currPos = board.getMarblePosition(safeMarble);
@@ -207,7 +302,7 @@ public class ProPlayer extends Player {
             }
         }
         
-        // CASE 7: Move any marble on the board
+        // PRIORITY 8: Move any marble on the board
         if (hasMarbleOnBoard(board)) {
             // Find the best marble to move
             Marble bestMarble = findBestMarbleToMove(board, steps);
@@ -226,9 +321,102 @@ public class ProPlayer extends Player {
     }
     
     /**
+     * Find a marble that is within the specified number of steps from the safe zone
+     */
+    private Marble findMarbleCloseToSafeZone(Board board, int threshold) {
+        Marble closestMarble = null;
+        int minDistance = Integer.MAX_VALUE;
+        
+        for (Marble m : marbles) {
+            if (!board.isMarbleInHome(m)) {
+                int pos = board.getMarblePosition(m);
+                
+                // Skip if already in safe zone
+                if (board.isInSafeZone(this, pos)) continue;
+                
+                int distance = distanceToSafeZone(board, pos);
+                
+                // Check if within threshold and closer than any found so far
+                if (distance <= threshold && distance < minDistance) {
+                    minDistance = distance;
+                    closestMarble = m;
+                }
+            }
+        }
+        
+        if (closestMarble != null) {
+            int pos = board.getMarblePosition(closestMarble);
+            System.out.println(name + " found marble at position " + pos + 
+                              " that is " + minDistance + " steps from safe zone");
+        }
+        
+        return closestMarble;
+    }
+    
+    /**
+     * Calculate the distance to reach the player's safe zone from a position
+     */
+    private int distanceToSafeZone(Board board, int position) {
+        // Skip calculation if already in safe zone
+        if (board.isInSafeZone(this, position)) {
+            return 0;
+        }
+        
+        int safeZoneEntry = getSafeZoneStart();
+        
+        // For player 2 (red)
+        if (name.equalsIgnoreCase("player2")) {
+            // Safe zone starts at 63
+            if (position < 63) {
+                return 63 - position;
+            } else {
+                // Need to go around the board
+                return (67 - position) + 1 + 63;
+            }
+        }
+        // For player 1 (black)
+        else if (name.equalsIgnoreCase("player1")) {
+            // Safe zone starts at 46
+            if (position < 46) {
+                return 46 - position;
+            } else {
+                // Need to go around the board
+                return (67 - position) + 1 + 46;
+            }
+        }
+        // For player 3 (blue)
+        else if (name.equalsIgnoreCase("player3")) {
+            // Safe zone starts at 13
+            if (position < 13) {
+                return 13 - position;
+            } else {
+                // Need to go around the board
+                return (67 - position) + 1 + 13;
+            }
+        }
+        // For player 4 (green)
+        else if (name.equalsIgnoreCase("player4")) {
+            // Safe zone starts at 30
+            if (position < 30) {
+                return 30 - position;
+            } else {
+                // Need to go around the board
+                return (67 - position) + 1 + 30;
+            }
+        }
+        
+        return Integer.MAX_VALUE; // Default fallback
+    }
+    
+    /**
      * Find the best marble to move based on proximity to safe zone
      */
     private Marble findBestMarbleToMove(Board board, int steps) {
+        // Skip for backward movement
+        if (steps <= 0) {
+            return findAnyMarbleNotInSafeZone(board);
+        }
+        
         Marble bestMarble = null;
         int bestScore = Integer.MIN_VALUE;
         
@@ -238,10 +426,24 @@ public class ProPlayer extends Player {
                 int targetPos = board.calculateTargetPosition(this, currPos, steps);
                 
                 if (targetPos != currPos) { // Can move
-                    int score = evaluateMove(currPos, targetPos);
+                    int score = evaluateMove(board, currPos, targetPos);
                     if (score > bestScore) {
                         bestScore = score;
                         bestMarble = m;
+                    }
+                }
+            }
+        }
+        
+        // If no valid move found, try any marble
+        if (bestMarble == null) {
+            for (Marble m : marbles) {
+                if (!board.isMarbleInHome(m)) {
+                    int currPos = board.getMarblePosition(m);
+                    int targetPos = board.calculateTargetPosition(this, currPos, steps);
+                    
+                    if (targetPos != currPos) { // Can move
+                        return m; // Just return the first movable marble
                     }
                 }
             }
@@ -251,118 +453,48 @@ public class ProPlayer extends Player {
     }
     
     /**
+     * Find any marble that is not in a safe zone
+     */
+    private Marble findAnyMarbleNotInSafeZone(Board board) {
+        for (Marble m : marbles) {
+            if (!board.isMarbleInHome(m)) {
+                int pos = board.getMarblePosition(m);
+                if (!board.isInSafeZone(this, pos)) {
+                    return m;
+                }
+            }
+        }
+        return null;
+    }
+    
+    /**
      * Evaluate a move based on proximity to safe zone
      */
-    private int evaluateMove(int currentPos, int targetPos) {
+    private int evaluateMove(Board board, int currentPos, int targetPos) {
         int score = 0;
         
         // Prefer moves that get closer to safe zone
-        int currentDist = calculateDistanceToSafeZone(currentPos);
-        int targetDist = calculateDistanceToSafeZone(targetPos);
+        int currentDist = distanceToSafeZone(board, currentPos);
+        int targetDist = distanceToSafeZone(board, targetPos);
         
         score += (currentDist - targetDist) * 10;
         
-        // Avoid moves that skip the safe zone entry
-        if (wouldSkipSafeZone(currentPos, targetPos)) {
-            score -= 50;
+        // Huge bonus if entering safe zone
+        if (!board.isInSafeZone(this, currentPos) && board.isInSafeZone(this, targetPos)) {
+            score += 500;
+        }
+        
+        // Bonus if moving further along in safe zone
+        if (board.isInSafeZone(this, currentPos) && board.isInSafeZone(this, targetPos) && targetPos > currentPos) {
+            score += 300;
+        }
+        
+        // Bonus for landing exactly at safe zone entry point
+        if (targetPos == getSafeZoneStart()) {
+            score += 200;
         }
         
         return score;
-    }
-    
-    /**
-     * Check if moving with the given steps would skip the safe zone
-     */
-    private boolean wouldSkipSafeZone(int currentPos, int steps) {
-        // For player 2 (red)
-        if (name.equalsIgnoreCase("player2")) {
-            if (currentPos == 60 && steps > 6) {
-                // From position 60, more than 6 steps would skip safe zone (63-66)
-                return true;
-            }
-            if (currentPos == 61 && steps > 5) {
-                return true;
-            }
-            if (currentPos == 62 && steps > 4) {
-                return true;
-            }
-        }
-        
-        // For player 1 (black)
-        else if (name.equalsIgnoreCase("player1")) {
-            if (currentPos == 43 && steps > 6) {
-                return true;
-            }
-            if (currentPos == 44 && steps > 5) {
-                return true;
-            }
-            if (currentPos == 45 && steps > 4) {
-                return true;
-            }
-        }
-        
-        // For player 3 (blue)
-        else if (name.equalsIgnoreCase("player3")) {
-            if (currentPos == 10 && steps > 6) {
-                return true;
-            }
-            if (currentPos == 11 && steps > 5) {
-                return true;
-            }
-            if (currentPos == 12 && steps > 4) {
-                return true;
-            }
-        }
-        
-        // For player 4 (green)
-        else if (name.equalsIgnoreCase("player4")) {
-            if (currentPos == 27 && steps > 6) {
-                return true;
-            }
-            if (currentPos == 28 && steps > 5) {
-                return true;
-            }
-            if (currentPos == 29 && steps > 4) {
-                return true;
-            }
-        }
-        
-        return false;
-    }
-    
-    /**
-     * Get the number of steps needed to reach the safe zone from a position
-     */
-    private int getStepsToSafeZone(int position) {
-        // For player 2 (red)
-        if (name.equalsIgnoreCase("player2")) {
-            if (position == 60) return 3; // From position 60 to safe zone start (63)
-            if (position == 61) return 2;
-            if (position == 62) return 1;
-        }
-        
-        // For player 1 (black)
-        else if (name.equalsIgnoreCase("player1")) {
-            if (position == 43) return 3; // From position 43 to safe zone start (46)
-            if (position == 44) return 2;
-            if (position == 45) return 1;
-        }
-        
-        // For player 3 (blue)
-        else if (name.equalsIgnoreCase("player3")) {
-            if (position == 10) return 3; // From position 10 to safe zone start (13)
-            if (position == 11) return 2;
-            if (position == 12) return 1;
-        }
-        
-        // For player 4 (green)
-        else if (name.equalsIgnoreCase("player4")) {
-            if (position == 27) return 3; // From position 27 to safe zone start (30)
-            if (position == 28) return 2;
-            if (position == 29) return 1;
-        }
-        
-        return -1; // Position not near safe zone
     }
     
     /**
@@ -382,6 +514,9 @@ public class ProPlayer extends Player {
      * Find a marble that can capture an opponent's marble with the given steps
      */
     private Marble findMarbleForCapture(Board board, int steps) {
+        // Skip for backward movement
+        if (steps <= 0) return null;
+        
         for (Marble m : marbles) {
             if (!board.isMarbleInHome(m)) {
                 int currPos = board.getMarblePosition(m);
@@ -451,23 +586,13 @@ public class ProPlayer extends Player {
         for (Marble m : marbles) {
             if (!board.isMarbleInHome(m)) {
                 int pos = board.getMarblePosition(m);
-                if (isSafeZonePosition(pos)) {
+                if (board.isInSafeZone(this, pos)) {
                     return m;
                 }
             }
         }
         
         return null;
-    }
-    
-    /**
-     * Check if a position is in our safe zone
-     */
-    private boolean isSafeZonePosition(int position) {
-        int safeStart = getSafeZoneStart();
-        int safeEnd = safeStart + 3; // 4 positions in each safe zone
-        
-        return position >= safeStart && position <= safeEnd;
     }
     
     private boolean hasMarbleOnBoard(Board board) {
@@ -574,20 +699,6 @@ public class ProPlayer extends Player {
             case "player4": // Base at 35, moving backward 4 spaces
                 return 27; // 35 → 34 → 29 → 28 → 27 (Skip safe zone 30-33)
             default: return 60;
-        }
-    }
-    
-    /**
-     * Calculate the distance to safe zone
-     */
-    private int calculateDistanceToSafeZone(int position) {
-        int safeEntry = getSafeZoneEntryPoint();
-        
-        // Simple distance calculation - can be improved for board wrapping
-        if (position > safeEntry) {
-            return (67 - position) + safeEntry + 1; // Wrap around the board
-        } else {
-            return safeEntry - position;
         }
     }
 }

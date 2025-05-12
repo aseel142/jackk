@@ -1,6 +1,9 @@
 package application;
 
 import java.util.ArrayList;
+import java.util.List;
+
+
 
 /**
  * BeginnerPlayer - With improved marble detection and detailed debugging
@@ -59,6 +62,38 @@ public class BeginnerPlayer extends Player {
         System.out.println(name + " has " + marblesOnBoard + " marble(s) on board, " + 
                           marblesOnBase + " on base, and " + marblesInHome + " in home");
         
+        // NEW CHECK: If the card moves backward and we have marbles in safe zone, don't try to move those
+        if (steps < 0) {
+            System.out.println("Card has negative movement (" + steps + "), checking for marbles in safe zone");
+            List<Marble> movableMarblesNotInSafeZone = new ArrayList<>();
+            
+            for (Marble m : marbles) {
+                if (!board.isMarbleInHome(m)) {
+                    int pos = board.getMarblePosition(m);
+                    if (!board.isInSafeZone(this, pos)) {
+                        movableMarblesNotInSafeZone.add(m);
+                        System.out.println("- Marble at position " + pos + " is not in safe zone, can be moved backward");
+                    } else {
+                        System.out.println("- Marble at position " + pos + " is in safe zone, cannot be moved backward");
+                    }
+                }
+            }
+            
+            // If we have marbles that can move backward, use the first one
+            if (!movableMarblesNotInSafeZone.isEmpty()) {
+                Marble marbleToMove = movableMarblesNotInSafeZone.get(0);
+                int currPos = board.getMarblePosition(marbleToMove);
+                int targetPos = board.calculateTargetPosition(this, currPos, steps);
+                
+                if (targetPos != currPos) {
+                    System.out.println(name + " MOVING marble backward from position " + currPos + " to " + targetPos);
+                    board.moveMarbleToPosition(marbleToMove, targetPos, 1.0, 0.0);
+                    moved = true;
+                    return; // Successfully moved a marble
+                }
+            }
+        }
+        
         // PRIORITY 1: If we have a marble on the base position, always move it first
         Marble baseMarble = findMarbleOnBase(board);
         if (baseMarble != null) {
@@ -93,6 +128,13 @@ public class BeginnerPlayer extends Player {
         for (Marble m : marbles) {
             if (!board.isMarbleInHome(m) && (baseMarble == null || m != baseMarble)) {
                 int currPos = board.getMarblePosition(m);
+                
+                // Skip marbles in safe zone if trying to move backward
+                if (steps < 0 && board.isInSafeZone(this, currPos)) {
+                    System.out.println("- Marble at position " + currPos + " is in safe zone, cannot move backward");
+                    continue;
+                }
+                
                 int targetPos = board.calculateTargetPosition(this, currPos, steps);
                 
                 String moveInfo = "Marble at position " + currPos + " -> target " + targetPos;

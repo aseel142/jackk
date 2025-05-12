@@ -79,6 +79,34 @@ public class NormalPlayer extends Player {
         int steps = getStepsForCard(card);
         int basePos = getBasePosition();
         
+        // Special handling for backward movement (FOUR card)
+        if (steps < 0) {
+            // First, identify marbles that are NOT in the safe zone
+            List<Marble> movableMarblesNotInSafeZone = new ArrayList<>();
+            
+            for (Marble m : marbles) {
+                if (!board.isMarbleInHome(m)) {
+                    int pos = board.getMarblePosition(m);
+                    if (!board.isInSafeZone(this, pos)) {
+                        movableMarblesNotInSafeZone.add(m);
+                    }
+                }
+            }
+            
+            // If we have marbles that can be moved backward, choose the furthest one
+            if (!movableMarblesNotInSafeZone.isEmpty()) {
+                Marble marbleToMove = findFurthestMarbleInList(board, movableMarblesNotInSafeZone);
+                int currPos = board.getMarblePosition(marbleToMove);
+                int targetPos = board.calculateTargetPosition(this, currPos, steps);
+                
+                if (targetPos != currPos) {
+                    System.out.println(name + " moving marble backward from position " + currPos + " to " + targetPos);
+                    board.moveMarbleToPosition(marbleToMove, targetPos, 1.0, 0.0);
+                    return;
+                }
+            }
+        }
+        
         // PRIORITY 1: If we have a marble on the base position, always move it first
         Marble baseMarble = findMarbleOnBase(board);
         if (baseMarble != null) {
@@ -98,14 +126,20 @@ public class NormalPlayer extends Player {
         Marble furthestMarble = findFurthestMarble(board);
         if (furthestMarble != null && (baseMarble == null || furthestMarble != baseMarble)) {
             int currPos = board.getMarblePosition(furthestMarble);
-            int targetPos = board.calculateTargetPosition(this, currPos, steps);
             
-            // Only move if it changes position
-            if (targetPos != currPos) {
-                System.out.println(name + " moving furthest marble from position " + currPos);
-                board.moveMarbleToPosition(furthestMarble, targetPos, 1.0, 0.0);
-                moved = true;
-                return; // Successfully moved the furthest marble
+            // Skip if trying to move backward from safe zone
+            if (steps < 0 && board.isInSafeZone(this, currPos)) {
+                System.out.println(name + " cannot move marble backward from safe zone");
+            } else {
+                int targetPos = board.calculateTargetPosition(this, currPos, steps);
+                
+                // Only move if it changes position
+                if (targetPos != currPos) {
+                    System.out.println(name + " moving furthest marble from position " + currPos);
+                    board.moveMarbleToPosition(furthestMarble, targetPos, 1.0, 0.0);
+                    moved = true;
+                    return; // Successfully moved the furthest marble
+                }
             }
         }
         
@@ -116,6 +150,12 @@ public class NormalPlayer extends Player {
                 (furthestMarble == null || m != furthestMarble)) {
                 
                 int currPos = board.getMarblePosition(m);
+                
+                // Skip if trying to move backward from safe zone
+                if (steps < 0 && board.isInSafeZone(this, currPos)) {
+                    continue;
+                }
+                
                 int targetPos = board.calculateTargetPosition(this, currPos, steps);
                 
                 // Only move if it changes position
@@ -152,42 +192,23 @@ public class NormalPlayer extends Player {
             board.nextTurn();
         }
     }
-    
+
     /**
-     * Find a marble that is currently on this player's base position
+     * Find the furthest marble from a list of marbles
      */
-    private Marble findMarbleOnBase(Board board) {
-        int basePos = getBasePosition();
-        
-        for (Marble m : marbles) {
-            if (!board.isMarbleInHome(m)) {
-                int pos = board.getMarblePosition(m);
-                if (pos == basePos) {
-                    return m;
-                }
-            }
-        }
-        return null; // No marble found on base
-    }
-    
-    /**
-     * Find the marble that has moved furthest along the track
-     */
-    private Marble findFurthestMarble(Board board) {
+    private Marble findFurthestMarbleInList(Board board, List<Marble> marbleList) {
         Marble furthest = null;
         int maxProgress = -1;
         
-        for (Marble m : marbles) {
-            if (!board.isMarbleInHome(m)) {
-                int currPos = board.getMarblePosition(m);
-                
-                // For simplicity, just use position as progress measure
-                int progress = currPos;
-                
-                if (progress > maxProgress) {
-                    maxProgress = progress;
-                    furthest = m;
-                }
+        for (Marble m : marbleList) {
+            int currPos = board.getMarblePosition(m);
+            
+            // For simplicity, just use position as progress measure
+            int progress = currPos;
+            
+            if (progress > maxProgress) {
+                maxProgress = progress;
+                furthest = m;
             }
         }
         
@@ -272,4 +293,42 @@ public class NormalPlayer extends Player {
             default:    return 0;
         }
     }
+
+private Marble findMarbleOnBase(Board board) {
+    int basePos = getBasePosition();
+    
+    for (Marble m : marbles) {
+        if (!board.isMarbleInHome(m)) {
+            int pos = board.getMarblePosition(m);
+            if (pos == basePos) {
+                return m;
+            }
+        }
+    }
+    return null; // No marble found on base
 }
+
+/**
+ * Find the marble that has moved furthest along the track
+ */
+private Marble findFurthestMarble(Board board) {
+    Marble furthest = null;
+    int maxProgress = -1;
+    
+    for (Marble m : marbles) {
+        if (!board.isMarbleInHome(m)) {
+            int currPos = board.getMarblePosition(m);
+            
+            // For simplicity, just use position as progress measure
+            int progress = currPos;
+            
+            if (progress > maxProgress) {
+                maxProgress = progress;
+                furthest = m;
+            }
+        }
+    }
+    
+    return furthest;
+}}
+

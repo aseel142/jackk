@@ -460,8 +460,8 @@ public class Board {
      * Calculates the target position after moving a specified number of steps
      */
     public int calculateTargetPosition(Player player, int currentPosition, int steps) {
-        // Always enable debugging for red and blue players
-        boolean debug = (player == player2 || player == player3);
+        // Always enable debugging for all players
+        boolean debug = true;
         String playerName = player.getName();
         
         if (debug) {
@@ -477,7 +477,14 @@ public class Board {
         
         // Handle backwards movement specially
         if (steps < 0) {
-            if (debug) System.out.println("Backward movement not implemented, returning current position");
+            if (debug) System.out.println("Backward movement detected");
+            
+            // Check if already in safe zone - if so, prevent backward movement
+            if (isInSafeZone(player, currentPosition)) {
+                if (debug) System.out.println("Cannot move backward from safe zone");
+                return currentPosition; // No movement allowed from safe zone
+            }
+            
             return calculateBackwardMove(player, currentPosition, steps);
         }
         
@@ -530,78 +537,123 @@ public class Board {
         int distanceToSafeZone = -1;
         boolean approachingSafeZone = false;
         
-        // SPECIAL CHECK FOR RED (position 62 is just before Red's safe zone at 63)
-        if (player == player2 && currentPosition == 62) {
-            approachingSafeZone = true;
-            distanceToSafeZone = 1;
-            if (debug) System.out.println("RED is approaching safe zone (pos 62 -> 63)");
+        // Check for Red (player2)
+        if (player == player2) {
+            if (currentPosition == 62) {
+                approachingSafeZone = true;
+                distanceToSafeZone = 1;
+                if (debug) System.out.println("RED is approaching safe zone (pos 62 -> 63)");
+            } else if (currentPosition == 61) {
+                approachingSafeZone = true;
+                distanceToSafeZone = 2;
+                if (debug) System.out.println("RED is approaching safe zone (pos 61 -> 63)");
+            } else if (currentPosition == 60) {
+                approachingSafeZone = true;
+                distanceToSafeZone = 3;
+                if (debug) System.out.println("RED is approaching safe zone (pos 60 -> 63)");
+            }
         }
-        // Add similar checks for other players if needed
-        else if (player == player3 && currentPosition == 12) {
-            approachingSafeZone = true;
-            distanceToSafeZone = 1;
-            if (debug) System.out.println("BLUE is approaching safe zone (pos 12 -> 13)");
+        // Check for Blue (player3)
+        else if (player == player3) {
+            if (currentPosition == 12) {
+                approachingSafeZone = true;
+                distanceToSafeZone = 1;
+                if (debug) System.out.println("BLUE is approaching safe zone (pos 12 -> 13)");
+            } else if (currentPosition == 11) {
+                approachingSafeZone = true;
+                distanceToSafeZone = 2;
+                if (debug) System.out.println("BLUE is approaching safe zone (pos 11 -> 13)");
+            } else if (currentPosition == 10) {
+                approachingSafeZone = true;
+                distanceToSafeZone = 3;
+                if (debug) System.out.println("BLUE is approaching safe zone (pos 10 -> 13)");
+            }
         }
-        else if (player == player1 && currentPosition == 45) {
-            approachingSafeZone = true;
-            distanceToSafeZone = 1;
-            if (debug) System.out.println("BLACK is approaching safe zone (pos 45 -> 46)");
+        // Check for Black (player1)
+        else if (player == player1) {
+            if (currentPosition == 45) {
+                approachingSafeZone = true;
+                distanceToSafeZone = 1;
+                if (debug) System.out.println("BLACK is approaching safe zone (pos 45 -> 46)");
+            } else if (currentPosition == 44) {
+                approachingSafeZone = true;
+                distanceToSafeZone = 2;
+                if (debug) System.out.println("BLACK is approaching safe zone (pos 44 -> 46)");
+            } else if (currentPosition == 43) {
+                approachingSafeZone = true;
+                distanceToSafeZone = 3;
+                if (debug) System.out.println("BLACK is approaching safe zone (pos 43 -> 46)");
+            }
         }
-        else if (player == player4 && currentPosition == 29) {
-            approachingSafeZone = true;
-            distanceToSafeZone = 1;
-            if (debug) System.out.println("GREEN is approaching safe zone (pos 29 -> 30)");
+        // Check for Green (player4)
+        else if (player == player4) {
+            if (currentPosition == 29) {
+                approachingSafeZone = true;
+                distanceToSafeZone = 1;
+                if (debug) System.out.println("GREEN is approaching safe zone (pos 29 -> 30)");
+            } else if (currentPosition == 28) {
+                approachingSafeZone = true;
+                distanceToSafeZone = 2;
+                if (debug) System.out.println("GREEN is approaching safe zone (pos 28 -> 30)");
+            } else if (currentPosition == 27) {
+                approachingSafeZone = true;
+                distanceToSafeZone = 3;
+                if (debug) System.out.println("GREEN is approaching safe zone (pos 27 -> 30)");
+            }
         }
         
-        // SPECIAL HANDLING: If we're approaching our safe zone and have enough steps,
-        // prioritize entering it
-        if (approachingSafeZone && steps >= distanceToSafeZone) {
-            if (debug) System.out.println("Special case: Approaching safe zone with enough steps");
+        // SPECIAL HANDLING: Check if steps would cause us to skip our safe zone
+        if (approachingSafeZone) {
+            boolean wouldSkipSafeZone = false;
             
-            // Check for collisions with own marbles in safe zone
-            boolean canEnterSafeZone = true;
-            int targetPos = safeZoneStart + Math.min(steps - distanceToSafeZone, safePosCount - 1);
-            
-            if (targetPos > safeZoneEnd) {
-                targetPos = safeZoneEnd;
-                if (debug) System.out.println("Limiting target to safe zone end: " + targetPos);
+            // Check if we'd enter safe zone exactly
+            if (steps == distanceToSafeZone) {
+                if (debug) System.out.println("Exact steps to enter safe zone!");
+                // Perfect! This is what we want
+            }
+            // If steps > distance and divisible by distance, we'd land on the entry
+            else if (steps > distanceToSafeZone && steps % distanceToSafeZone == 0) {
+                if (debug) System.out.println("Steps divisible by distance to safe zone, would land on entry");
+                // Also good, we'd land exactly on the entry
+            }
+            // If steps > distance but we'd skip the entry point
+            else if (steps > distanceToSafeZone) {
+                // Here's the key: Would we skip our safe zone?
+                wouldSkipSafeZone = true;
+                if (debug) System.out.println("WARNING: Steps " + steps + " would cause skipping safe zone from position " + currentPosition);
             }
             
-            for (int pos = safeZoneStart; pos <= targetPos; pos++) {
-                if (occupiedPositions.contains(pos)) {
-                    canEnterSafeZone = false;
-                    if (debug) System.out.println("Cannot enter safe zone: position " + pos + " is occupied");
-                    break;
+            // If we would skip the safe zone, check if we should enter it
+            if (wouldSkipSafeZone) {
+                // SPECIAL RULE: When we're approaching our safe zone and would skip it,
+                // move into the safe zone instead
+                if (debug) System.out.println("SPECIAL RULE: Redirecting movement to enter safe zone");
+                
+                // Calculate position in safe zone
+                int stepsIntoSafeZone = steps - distanceToSafeZone;
+                int safeZoneTarget = safeZoneStart + Math.min(stepsIntoSafeZone, safePosCount - 1);
+                
+                // Check if any of our marbles is already at the target position
+                if (!occupiedPositions.contains(safeZoneTarget)) {
+                    if (debug) System.out.println("Moving into safe zone at position " + safeZoneTarget);
+                    return safeZoneTarget;
+                } else {
+                    if (debug) System.out.println("Cannot enter safe zone, position " + safeZoneTarget + " is occupied");
+                    // Fall back to standard movement (may end up skipping, but we can't enter)
                 }
             }
-            
-            if (canEnterSafeZone) {
-                if (debug) System.out.println("Entering safe zone directly to position " + targetPos);
-                return targetPos;
-            }
         }
         
-        // Standard step-by-step movement
-        if (debug) System.out.println("Starting step-by-step movement");
-        
-        int position = currentPosition;
-        int remaining = steps;
-        
-        // For blue player, check if we're already in safe zone
+        // Check if we're already in safe zone
         boolean startingInSafeZone = false;
-        if (player == player3 && position >= safeZoneStart && position <= safeZoneEnd) {
+        if (currentPosition >= safeZoneStart && currentPosition <= safeZoneEnd) {
             startingInSafeZone = true;
-            if (debug) System.out.println("BLUE is already in safe zone at position " + position);
-        }
-        // Also check for other players
-        else if (position >= safeZoneStart && position <= safeZoneEnd) {
-            startingInSafeZone = true;
-            if (debug) System.out.println("Player is already in safe zone at position " + position);
+            if (debug) System.out.println("Already in safe zone at position " + currentPosition);
         }
         
         // If already in safe zone, move only within it
         if (startingInSafeZone) {
-            int newPosition = position + steps;
+            int newPosition = currentPosition + steps;
             if (newPosition > safeZoneEnd) {
                 newPosition = safeZoneEnd; // Can't go beyond end of safe zone
                 if (debug) System.out.println("Cannot go beyond end of safe zone: " + safeZoneEnd);
@@ -610,7 +662,7 @@ public class Board {
             // Check for collisions
             if (occupiedPositions.contains(newPosition)) {
                 if (debug) System.out.println("Cannot move: position " + newPosition + " is occupied");
-                return position; // Can't move if target is occupied
+                return currentPosition; // Can't move if target is occupied
             }
             
             if (debug) System.out.println("Moving within safe zone to " + newPosition);
@@ -618,6 +670,9 @@ public class Board {
         }
         
         // Normal step-by-step movement for non-safe zone positions
+        int position = currentPosition;
+        int remaining = steps;
+        
         while (remaining > 0) {
             int next = position + 1;
             
@@ -630,6 +685,7 @@ public class Board {
             if (debug) System.out.println("Step: position " + position + " -> " + next);
             
             // CRITICAL: Check if we should enter our safe zone
+            boolean shouldEnterSafeZone = false;
             if ((player == player2 && next == 63) || // Red entering safe zone
                 (player == player3 && next == 13) || // Blue entering safe zone
                 (player == player1 && next == 46) || // Black entering safe zone
@@ -644,21 +700,19 @@ public class Board {
                     (player == player4 && position == 29)) { // Green just before safe zone
                     
                     if (debug) System.out.println("Valid safe zone entry point detected");
-                    
-                    // Ensure we're not skipping our own safe zone
-                    if (!occupiedPositions.contains(next)) {
-                        position = next; // Move into safe zone
-                        remaining--;
-                        if (debug) System.out.println("Entered safe zone at " + position);
-                    } else {
-                        if (debug) System.out.println("Safe zone entry " + next + " is occupied");
-                        break; // Can't enter if occupied
-                    }
-                } else {
-                    // We're approaching from the wrong direction - skip
-                    if (debug) System.out.println("Not approaching from correct entry point, skipping");
-                    position = next;
+                    shouldEnterSafeZone = true;
+                }
+            }
+            
+            if (shouldEnterSafeZone) {
+                // Ensure we're not skipping our own safe zone
+                if (!occupiedPositions.contains(next)) {
+                    position = next; // Move into safe zone
                     remaining--;
+                    if (debug) System.out.println("Entered safe zone at " + position);
+                } else {
+                    if (debug) System.out.println("Safe zone entry " + next + " is occupied");
+                    break; // Can't enter if occupied
                 }
                 continue;
             }
@@ -915,6 +969,9 @@ public class Board {
         ttB.play();
     }
     
+    /**
+     * Calculate position for backward movement (negative steps)
+     */
     private int calculateBackwardMove(Player player, int currentPosition, int steps) {
         // Make sure we're dealing with backward movement
         if (steps >= 0) {
@@ -928,6 +985,12 @@ public class Board {
             System.out.println("\n==== " + playerName + " BACKWARD MOVEMENT CALCULATION ====");
             System.out.println("Starting position: " + currentPosition);
             System.out.println("Steps: " + steps);
+        }
+        
+        // NEW CHECK: If the marble is in a safe zone, don't allow backward movement
+        if (isInSafeZone(player, currentPosition)) {
+            if (debug) System.out.println("Cannot move backward from safe zone position " + currentPosition);
+            return currentPosition; // Return the current position (no movement)
         }
         
         // Convert to positive for easier calculation

@@ -97,6 +97,13 @@ public class IntermediatePlayer extends Player {
         for (Marble m : marbles) {
             if (!board.isMarbleInHome(m)) {
                 int currPos = board.getMarblePosition(m);
+                
+                // NEW CHECK: If backward movement and in safe zone, penalize heavily
+                if (steps < 0 && board.isInSafeZone(this, currPos)) {
+                    score -= 100; // Heavy penalty
+                    continue;     // Skip further evaluation for this marble
+                }
+                
                 int targetPos = board.calculateTargetPosition(this, currPos, steps);
                 
                 // Bonus if moving closer to safe zone
