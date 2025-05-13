@@ -141,21 +141,21 @@ public abstract class Player {
             case "player2":
                 // Cards at bottom
                 cardX = 300 + (index * 50);
-                cardY = 550;
+                cardY = 490;
                 rotation = -10 + (index * 5);
                 break;
                 
             case "player1":
                 // Cards at right
-                cardX = 720;
+                cardX = 680;
                 cardY = 200 + (index * 50);
                 rotation = 80 + (index * 5);
                 break;
                 
             case "player4":
-                // Cards at top
-                cardX = 500 - (index * 50);
-                cardY = 50;
+                // Cards at top - ADJUSTED: shifted 50 pixels to the right
+                cardX = 600 - (index * 50);  // Changed from 500 to 550
+                cardY = 30;
                 rotation = 170 + (index * 5);
                 break;
                 

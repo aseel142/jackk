@@ -12,12 +12,6 @@ import javafx.scene.layout.VBox;
 import javafx.scene.text.Font;
 import javafx.scene.text.TextAlignment;
 import javafx.stage.Stage;
-import javafx.animation.TranslateTransition;
-import javafx.animation.Timeline;
-import javafx.animation.KeyFrame;
-import javafx.animation.KeyValue;
-import javafx.animation.Interpolator;
-import javafx.util.Duration;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -38,9 +32,6 @@ public class Main extends Application {
     private int currentGameNumber = 0;
     private boolean waitingForNextGame = false;
     
-    // Map to track marble positions
-    private Map<Marble, Integer> marblePositions = new HashMap<>();
-
     @Override
     public void start(Stage primaryStage) {
         this.primaryStage = primaryStage;
